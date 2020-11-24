@@ -47,6 +47,7 @@ An abstract type for an N * N MMatrix or SMatrix with element type T.
 """
 const MatND{N, T} = StaticArray{Tuple{N, N}, T, 2};
 
+
 """
     LinearDynamicsModel(A::AbstractMatrix,B::AbstractMatrix,W::Symmetric)
     LinearDynamicsModel(A::AbstractMatrix,B::AbstractMatrix,W::AbstractMatrix)

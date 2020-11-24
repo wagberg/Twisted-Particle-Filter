@@ -2,6 +2,7 @@ name = "Twisted Particle Filter"
 authors = ["wagberg"]
 
 [deps]
+DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 GaussianSmoothers = "004267a7-1e71-48ae-82c6-f47fd61fade8"
 IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
