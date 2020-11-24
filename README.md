@@ -4,7 +4,7 @@ This code base is using the Julia Language and [DrWatson](https://juliadynamics.
 to make a reproducible scientific project named
 > Twisted Particle Filter
 
-It is authored by wagberg.
+It is authored by Johan Wågberg.
 
 To (locally) reproduce this project, do the following:
 
@@ -19,3 +19,6 @@ To (locally) reproduce this project, do the following:
 
 This will install all necessary packages for you to be able to run the scripts and
 everything should work out of the box.
+
+## Working implementation
+The working implementation of a twisted particle filter is in scrpts/erts.jl
