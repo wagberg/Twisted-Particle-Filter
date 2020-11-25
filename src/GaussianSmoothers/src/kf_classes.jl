@@ -37,8 +37,6 @@ struct ExtendedKalmanFilter <: AbstractFilter
         warn("linear models: use kf over ekf") : new(d,o)
 end
 
-ExtendedKalmanFilter(ssm::SSM) = ExtendedKalmanFilter(ssm.d, ssm.o)
-
 """
     RtsSmoother(d::LinearDynamicsModel,o::LinearObservationModel)
 

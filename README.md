@@ -21,4 +21,4 @@ This will install all necessary packages for you to be able to run the scripts a
 everything should work out of the box.
 
 ## Working implementation
-The working implementation of a twisted particle filter is in scrpts/erts.jl
+The working implementation of a twisted particle filter is in scripts/erts.jl

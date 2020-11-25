@@ -168,6 +168,9 @@ struct NonlinearObservationModel{T<:Function, S<:Distribution} <: ObservationMod
     d::S
 end
 
+# NonlinearObservationModel(h::Function, R::Symmetric) = NonlinearObservationModel(h, MvNormal(R))
+# NonlinearObservationModel(h::Function, R::AbstractMatrix) = NonlinearObservationModel(h, Symmetric(R))
+
 """
     measure(m::LinearObservationModel, x::AbstractVector{<:Number}, u::AbstractVector{<:Number})
     measure(m::LinearObservationModel, x::AbstractVector{T}, u::AbstractVector{T}, rng::AbstractRNG) where T<:Number

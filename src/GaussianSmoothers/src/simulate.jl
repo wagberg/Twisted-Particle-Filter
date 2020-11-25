@@ -9,8 +9,8 @@ motion and measurement equations specified by the filter.
 function simulate_step(filter::AbstractFilter, x::AbstractVector{<:Number},
         u::AbstractVector{<:Number}, rng::AbstractRNG=Random.GLOBAL_RNG)
     
-    yn = measure(filter.o, x, rng; u=u)
-    xn = predict(filter.d, x, rng; u=u)
+    yn = measure(filter.o, x, rng; u)
+    xn = predict(filter.d, x, rng; u)
     
     return xn, yn
 end
@@ -85,14 +85,13 @@ function likelihood(filter::AbstractFilter, bp::GaussianBelief, action_history::
         log_likelihood = 0
         # iterate through and update beliefs
         for (u, y) in zip(action_history, measurement_history)
-            bf, ll = measure(filter, bp, y, u)
+            bf, ll = measure(filter, bp, y; u)
             log_likelihood += ll
-            bp = predict(filter, bf, u)
+            bp = predict(filter, bf; u)
         end
 
         return log_likelihood
 end
-
 
 """
     run_filter(filter::AbstractFilter, bp::GaussianBelief, action_history::Vector{AbstractVector},
@@ -102,7 +101,9 @@ Given an initial __predictive__ belief bp, matched-size arrays for action and me
 histories and a filter, update the beliefs using the filter, and return a
 vector of all beliefs.
 """
-function run_filter(filter::AbstractFilter, bp::GaussianBelief, y::Vector{B}; u::Vector{A} = [zeros(0) for _ in y]) where {A<:AbstractVector, B<:AbstractVector}
+function run_filter(filter::AbstractFilter, bp::GaussianBelief,
+    y::Vector{<:AbstractVector};
+    u::Vector{<:AbstractVector})
 
         # assert matching action and measurement sizes
         @assert length(u) == length(y)
@@ -113,7 +114,7 @@ function run_filter(filter::AbstractFilter, bp::GaussianBelief, y::Vector{B}; u:
         log_likelihood = 0
         # iterate through and update beliefs
         for (_u, _y) in zip(u, y)
-            bf, ll = measure(filter, bp, y; u=_u)
+            bf, ll = measure(filter, bp, _y; u=_u)
             log_likelihood += ll
             push!(beliefs, bf)
             bp = predict(filter, bf; u=_u)

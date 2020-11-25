@@ -102,3 +102,7 @@ function _resample!(ξ,w,Σ)
     end
     Σ
 end
+
+function resample_multinomial(w::AbstractVector{<:Real}, num_particles::Integer)
+    return rand(Distributions.sampler(Categorical(w)), num_particles)
+end

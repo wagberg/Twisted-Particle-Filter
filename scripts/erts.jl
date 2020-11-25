@@ -3,7 +3,7 @@ using DrWatson
 @quickactivate "Twisted Particle Filter"
 
 using BenchmarkTools
-using GaussianFilters
+using GaussianSmoothers
 using CSV
 using DataFrames
 using LinearAlgebra
@@ -14,176 +14,7 @@ using ProgressBars
 using StatsFuns
 using ThreadsX
 
-import GaussianFilters.measure
-import GaussianFilters.jacobian
-import GaussianFilters.predict
-
 include(projectdir("src","resampling.jl"))
-## Redfine update and run_fitler 
-"""
-    run_filter(filter::AbstractFilter, b0::GaussianBelief, action_history::Vector{AbstractVector}, measurement_history::Vector{AbstractVector})
-
-Given an initial __predictive__ belief  `b0`, matched-size arrays for action and measurement
-histories and a filter, update the beliefs using the filter, and return a
-vector of all beliefs and the log likelihood.
-"""
-function run_filter(filter::AbstractFilter, bp::GaussianBelief, action_history::Vector{A},
-    measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
-
-    # assert matching action and measurement sizes
-    @assert length(action_history) == length(measurement_history)
-
-    # initialize belief vector
-    beliefs = Vector{GaussianBelief}()
-
-    log_likelihood = 0
-    # iterate through and update beliefs
-    for (u, y) in zip(action_history, measurement_history)
-        bf, ll = measure(filter, bp, y; u = u)
-        log_likelihood += ll
-        push!(beliefs, bf)
-        bp = predict(filter, bf, u)
-    end
-
-    return beliefs, log_likelihood
-end
-
-"""
-    likelihood(filter::AbstractFilter, bf::GaussianBelief, action_history::Vector{AbstractVector}, measurement_history::Vector{AbstractVector})
-
-Given an initial __filtering__ belief  `bf`, matched-size arrays for action and measurement
-histories and a filter, returns the log likelihood.
-"""
-function likelihood(filter::AbstractFilter, bf::GaussianBelief, action_history::Vector{A},
-    measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
-
-    bp = predict(filter, bf, action_history[1])
-
-    log_likelihood = 0
-
-    for (u,y) in zip(action_history[2:end], measurement_history[2:end])
-        bf, ll = measure(filter, bp, y; u=u)
-        log_likelihood += ll
-        bp = predict(filter, bf, u)
-    end
-
-    return log_likelihood
-end
-
-function simulation(filter::AbstractFilter, b0::GaussianBelief,
-    action_sequence::Vector{<:AbstractArray},
-    rng::AbstractRNG = Random.GLOBAL_RNG)
-
-    # make initial state
-    s0 = rand(rng, b0)
-
-    # simulate action sequence
-    state_history = [s0]
-    measurement_history = Vector{AbstractVector{typeof(s0[1])}}()
-    for u in action_sequence
-        yn = measure(filter.o, state_history[end], u, rng)
-        push!(measurement_history, yn)
-        xn = predict(filter.d, state_history[end], u, rng)
-        push!(state_history, xn)
-    end
-    pop!(state_history)
-    
-    return state_history, measurement_history
-end
-
-function measure(filter::ExtendedKalmanFilter, bp::GaussianBelief, y::AbstractVector{a};
-    u::AbstractVector{b} = [false]) where {a<:Number, b<:Number}
-
-    # Measurement update
-    yp = measure(filter.o, bp.μ, u)
-    H = jacobian(filter.o, bp.μ, u)
-
-    # Likelihood
-    S = H * bp.Σ * H' + filter.o.V
-    ll = logpdf(MvNormal(yp,S), y)
-
-    # Kalman Gain
-    # K = bp.Σ * H' * inv(S)
-    K = (S \ (H*bp.Σ))'
-
-    # Measurement update
-    μn = bp.μ + K * (y - yp)
-    Σn = (I - K * H) * bp.Σ
-    return GaussianBelief(μn, Σn), ll
-end
-
-function resample_multinomial(w::AbstractVector{<:Real}, num_particles::Integer)
-    return rand(Distributions.sampler(Categorical(w)), num_particles)
-end
-
-# SMOOTHER
-abstract type AbstractSmoother end
-
-struct ExtendedRtsSmoother <: AbstractSmoother
-    d::DynamicsModel
-    o::ObservationModel
-    f::ExtendedKalmanFilter
-
-    function ExtendedRtsSmoother(d::DynamicsModel, o::ObservationModel)
-        f = ExtendedKalmanFilter(d, o)
-        new(d, o, f)
-    end
-end
-
-function smooth(smoother::ExtendedRtsSmoother, bs::GaussianBelief,
-                bf::GaussianBelief, u::AbstractVector{<:Number} = [false])
-    bp = predict(smoother.f, bf, u)
-    F = jacobian(smoother.f.d, bf.μ, u)
-    G = (bp.Σ \ (bf.Σ * F))'
-    μ = bf.μ + G * (bs.μ - bp.μ)
-    Σ = bf.Σ + G * (bs.Σ - bp.Σ) * G'
-    return GaussianBelief(μ, Σ)
-end
-
-"""
-    run_smoother(smoother::AbstractSmoother, b0::GaussianBelief, action_history::Vector{AbstractVector}, measurement_history::Vector{AbstractVector})
-
-Given an initial __predictive__ belief  `b0`, matched-size arrays for action and measurement
-histories and a filter, update the beliefs using the filter, run a backwards smoothing
-sweep, and return a vector of all smoothed beliefs and the log likelihood.
-"""
-function run_smoother(smoother::AbstractSmoother, b0::GaussianBelief, action_history::Vector{A},
-    measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
-       
-    filter_beliefs, ll = run_filter(smoother.f, b0, action_history, measurement_history)
-
-    bs = predict(smoother.f, filter_beliefs[end], action_history[end])
-    smoothed_beliefs = Vector{GaussianBelief}()
-    for (u, bf) in zip(reverse(action_history), reverse(filter_beliefs))
-        bs = smooth(smoother, bs, bf, u)
-        pushfirst!(smoothed_beliefs, bs)
-    end
-    return smoothed_beliefs, ll
-end
-
-"""
-    run_smoother(smoother::AbstractSmoother, bf::GaussianBelief, action_history::Vector{AbstractVector}, measurement_history::Vector{AbstractVector})
-
-Given an initial __filtering__ belief  `bf`, matched-size arrays for action and measurement
-histories and a filter, update the beliefs using the filter, run a backwards smoothing
-sweep, and return a vector of all smoothed beliefs and the log likelihood. The log likelihood
-is p(y_{2:T} | x_{1}).
-"""
-function run_smoother_from_filtering(smoother::AbstractSmoother, bf::GaussianBelief, action_history::Vector{A},
-    measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
-    
-    bp = predict(smoother.f, bf, action_history[1])
-    
-    filter_beliefs, ll = run_filter(smoother.f, bp, action_history[2:end], measurement_history[2:end])
-
-    bs = predict(smoother.f, filter_beliefs[end], action_history[end])
-    # smoothed_beliefs = Vector{GaussianBelief}()
-    for (u, bf) in zip(reverse(action_history[2:end]), reverse(filter_beliefs[2:end]))
-        bs = smooth(smoother, bs, bf, u)
-        # pushfirst!(smoothed_beliefs, bs)
-    end
-    return bs, ll
-end
 
 ##
 df = dropmissing(DataFrame(CSV.File(datadir("exp_raw","CascadedTanksFiles","dataBenchmark.csv"))), :uEst)
@@ -208,30 +39,112 @@ yVal = [[x] for x in df.yVal]
         4.9728]
 
 ##
-function step(x, u)
+struct TankDynamicsModel <: DynamicsModel
+    d::Distribution
+end
+function GaussianSmoothers.predict(m::TankDynamicsModel, x::AbstractVector{<:Number}, 
+    u::AbstractVector{<:Number}, w::AbstractVector{<:Number})
     k₁, k₂, k₃, k₄, k₅, k₆, σₑ², σᵥ², ξ₁, ξ₂ = θ
     xp = clamp.(x, 0, 10)
     xp[1] += Ts*(-k₁*sqrt(xp[1]) - k₅*xp[1] + k₃*u[1])
     xp[2] += Ts*(k₁*sqrt(xp[1]) + k₅*xp[1] - k₂*sqrt(xp[2]) - k₆*xp[2] + k₄*max.(x[1]-10.0, 0.0))
 
+    return xp .+ w
+end
+function GaussianSmoothers.jacobian(::GaussianSmoothers.NoiseJacobian, m::TankDynamicsModel, x; u=zeros(eltype(x),0))
+    Array{eltype(x), 2}(I, length(x), length(x))
+end
+function GaussianSmoothers.jacobian(::GaussianSmoothers.StateJacobian, m::TankDynamicsModel, x; u=zeros(eltype(x),0))
+    k₁, k₂, k₃, k₄, k₅, k₆, σₑ², σᵥ², ξ₁, ξ₂ = θ
+    xp = zeros(2,2)
+    
+    if x[1] < 10.0 && x[1] > 0
+        xp[1,1] = 1.0 + Ts*(-0.5*k₁/sqrt(x[1]) - k₅)
+        xp[2,1] = Ts*(0.5*k₁/sqrt(x[1]) + k₅)
+    end
+    if x[2] < 10.0 && x[2] > 0
+        xp[2,2] = 1.0 + Ts*(-0.5*k₂/sqrt(x[2]) - k₆)
+    end
+    if x[1] > 10.0
+        xp[2,1] += Ts*k₄
+    end
+
     return xp
 end
 
 W = θ[7]*Matrix{Float64}(I, 2, 2)
-
-dmodel = NonlinearDynamicsModel(step, W)
-
+tankdmodel = TankDynamicsModel(MvNormal(W))
 ##
-function observe(x, u)
-    return clamp.(x[2:2], 0, 10)
+struct TankObservationModel <: ObservationModel
+    d::Distribution
+end
+function GaussianSmoothers.measure(m::TankObservationModel, x::AbstractVector{<:Number}, 
+    u::AbstractVector{<:Number}, e::AbstractVector{<:Number})
+    clamp.(x[2:2], 0, 10) .+ e
+end
+function GaussianSmoothers.jacobian(::GaussianSmoothers.NoiseJacobian, m::TankObservationModel, x; u=zeros(eltype(x),0))
+    Array{Float64, 2}(I, 1, 1)
+end
+function GaussianSmoothers.jacobian(::GaussianSmoothers.StateJacobian, m::TankObservationModel, x; u=zeros(eltype(x),0))
+    xp = zeros(1,2)
+    if x[2] < 10.0 && x[2] > 0
+        xp[1,2] = 1.0
+    end
+    xp
+end
+function observe(x, u, e)
+    return clamp.(x[2:2], 0, 10) .+ e
 end
 
 V = θ[8]*Matrix{Float64}(I, 1, 1)
 
-omodel = NonlinearObservationModel(observe, V)
-
+omodel = NonlinearObservationModel(observe, MvNormal(V))
+tankomodel = TankObservationModel(MvNormal(V))
 ##
+
 ekf = ExtendedKalmanFilter(dmodel, omodel)
+tankekf = ExtendedKalmanFilter(tankdmodel, tankomodel)
+run_filter(ekf, GaussianBelief([5.0, 5.0], W), yVal, u=uVal)
+run_filter(tankekf, GaussianBelief([5.0, 5.0], W), yVal, u=uVal)
+@btime run_filter(ekf, GaussianBelief([5.0, 5.0], W), yVal, u=uVal);
+@btime run_filter(tankekf, GaussianBelief([5.0, 5.0], W), yVal, u=uVal);
+##
+
+
+function TankDynamicsModel(θ)
+    let
+        k₁, k₂, k₃, k₄, k₅, k₆, σₑ², σᵥ², ξ₁, ξ₂ = θ
+        function f(x, u)
+            xp = clamp.(x, 0, 10)
+            xp[1] += Ts*(-k₁*sqrt(xp[1]) - k₅*xp[1] + k₃*u[1])
+            xp[2] += Ts*(k₁*sqrt(xp[1]) + k₅*xp[1] - k₂*sqrt(xp[2]) - k₆*xp[2] + k₄*max.(x[1]-10.0, 0.0))
+        
+            return xp
+        end
+
+        function df(x, u)
+            k₁, k₂, k₃, k₄, k₅, k₆, σₑ², σᵥ², ξ₁, ξ₂ = θ
+            xp = zeros(2,2)
+            
+            if x[1] < 10.0 && x[1] > 0
+                xp[1,1] = Ts*(1.0 - 0.5*k₁/sqrt(x[1]) + k₅)
+                xp[2,1] = Ts*(0.5*k₁/sqrt(x[1]) + k₅)
+            end
+            if x[2] < 10.0 && x[1] > 0
+                xp[2,2] = Ts*(1.0 - 0.5*k₂/sqrt(x[2]) - k₆)
+            end
+            if x[1] > 10.0
+                xp[2,1] += Ts*k₄
+
+            xp[1] += Ts*(-k₁*sqrt(xp[1]) - k₅*xp[1] + k₃*u[1])
+            xp[2] += Ts*(k₁*sqrt(xp[1]) + k₅*xp[1] - k₂*sqrt(xp[2]) - k₆*xp[2] + k₄*max.(x[1]-10.0, 0.0))
+        
+            return xp
+        end
+        new()
+    end
+##
+
 
 ##
 function bpf(θ, y, u, M, rng=Random.GLOBAL_RNG)
@@ -239,22 +152,23 @@ function bpf(θ, y, u, M, rng=Random.GLOBAL_RNG)
     ξ = [rand(initial_distribtuion) for i = 1:M]
     w = fill(-log(M),M)
     ll = 0
-    data_residual_distribution = MvNormal(omodel.V)
+    data_residual_distribution = omodel.d
     for (_y, _u) in zip(y, u)
         # weight
         # w = map((x,w) -> w + logpdf(MvNormal(omodel.V),(_y-measure(omodel, x, _u))), ξ, w)
-        map!((x,w) -> w + logpdf(data_residual_distribution,(_y - measure(omodel, x, _u))), w, ξ, w)
+        map!((x,w) -> w + logpdf(data_residual_distribution,(_y - measure(omodel, x; u=_u))), w, ξ, w)
         wn = logsumexp(w)
         a = resample_multinomial(exp.(w .- wn), M)
         ll += wn
     
         # propagate
         w = fill(-log(M), M)
-        ξ = map!(x->predict(dmodel, x, _u, rng), ξ, ξ[a])
+        map!(x->predict(dmodel, x, rng; u=_u), ξ, ξ[a])
     end
     return ll
 end
 
+@btime bpf(θ, yVal, uVal, 100)
 ##
 function tpf(θ, y::Vector{<:AbstractVector}, u::Vector{<:AbstractVector}, M::Integer,
     filter::AbstractFilter, look_ahead::Integer, rng=Random.GLOBAL_RNG)
