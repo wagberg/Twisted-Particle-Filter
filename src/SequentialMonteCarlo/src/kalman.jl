@@ -28,6 +28,8 @@ struct KalmanStorage{T}
     end
 end
 
+KalmanStorage(model::SSM, t) = KalmanStorage(particletype(model), t)
+
 """
 Extended Kalman filter.
 * `storage`: Preallocated storage

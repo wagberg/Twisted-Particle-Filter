@@ -25,6 +25,8 @@ struct ParticleStorage{P <: Particle, T <: AFloat} <: SSMStorage
     end
 end
 
+ParticleStorage(model::SSM, n_particles, t) = ParticleStorage(particletype(model), n_particles, t)
+
 function particle_count(storage::ParticleStorage)
     size(storage.X, 1)
 end
