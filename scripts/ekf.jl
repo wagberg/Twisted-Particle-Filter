@@ -69,15 +69,18 @@ smooth!(storage, model, data, θ)
 @assert all([isapprox(storage.smooth_mean[t],smoothed_beliefs[t].μ) for t in 1:length(filtered_beliefs)])
 @assert all([isapprox(storage.smooth_Sigma[t],smoothed_beliefs[t].Σ) for t in 1:length(filtered_beliefs)])
 
+println("Benchmarking ekf")
 @btime ekf!(storage, model, data, θ);
+println("Benchmarking GaussianSmoothers ekf")
 @btime run_filter(ekf, b0, data.y; u=data.u);
 
 function new_smooth()
     ekf!(storage, model, data, θ)
     smooth!(storage, model, data, θ)
 end
-
+println("Benchmarking GaussianSmoothers rts")
 @btime run_smoother(rts, b0, data.y; u=data.u);
+println("Benchmarking rts")
 @btime new_smooth();
 
 ##
