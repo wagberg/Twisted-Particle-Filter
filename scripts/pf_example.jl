@@ -42,7 +42,7 @@ dmodel = LinearDynamicsModel(fill(θ.ϕ, 1, 1), fill(θ.σ^2, 1, 1))
 f(x, u, v, θ) = θ.ϕ.*x + v
 dmodel = NonlinearDynamicsModel(f, MvNormal(fill(θ.σ, 1, 1)))
 
-h(x, u, e) = θ.β .* exp.(0.5.*x) .* e
+h(x, u, e, θ) = θ.β .* exp.(0.5.*x) .* e
 
 omodel = NonlinearObservationModel(h, MvNormal(fill(1, 1, 1)))
 

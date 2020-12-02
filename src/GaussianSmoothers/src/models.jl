@@ -47,6 +47,7 @@ An abstract type for an N * N MMatrix or SMatrix with element type T.
 """
 const MatND{N, T} = StaticArray{Tuple{N, N}, T, 2};
 
+
 """
     LinearDynamicsModel(A::AbstractMatrix,B::AbstractMatrix,W::Symmetric)
     LinearDynamicsModel(A::AbstractMatrix,B::AbstractMatrix,W::AbstractMatrix)
@@ -99,7 +100,7 @@ Construct linear observation dynamics model with; transition matrix C,
 control matrix B, and symmetric zero-mean measurement noise with
 symmetric covariance matrix V
 """
-struct LinearObservationModel{TC,TD, TN, S<:MvNormal} <: DynamicsModel
+struct LinearObservationModel{TC,TD, TN, S<:MvNormal} <: ObservationModel
     C::TC
     D::TD
     N::TN
@@ -115,7 +116,7 @@ function LinearObservationModel(C, D, N, R)
     LinearObservationModel(SMatrix{ny,nx}(C),SMatrix{ny,nu}(D),SMatrix{ny,nv}(N),MvNormal(Symmetric(R)))
 end
 
-LinearObservationModel(C, D, R) = LinearObservationModel(C, D, typeof(R)(I, size(R)...), R)
+LinearObservationModel(C, D, R) = LinearObservationModel(C, D, typeof(C)(I, size(R)...), R)
 LinearObservationModel(C, R) = LinearObservationModel(C, zeros(eltype(C), size(C,1), 0), R)
 
 """

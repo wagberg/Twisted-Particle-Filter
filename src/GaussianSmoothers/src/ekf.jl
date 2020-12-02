@@ -7,7 +7,7 @@ Uses Extended Kalman filter to run prediction step on gaussian belief b0,
 given control vector u.
 """
 function predict(filter::ExtendedKalmanFilter, b0::GaussianBelief;
-                u::AbstractVector{<:Number})
+                u::AbstractVector{<:Number} = [false])
 
     m = filter.d
     # Motion update
@@ -25,7 +25,7 @@ end
 Uses Extended Kalman filter to run prediction step on gaussian belief b0,
 given control vector u.
 """
-function predict!(b0::GaussianBelief, filter::ExtendedKalmanFilter, u::AbstractVector{<:Number})
+function predict!(b0::GaussianBelief, filter::ExtendedKalmanFilter; u::AbstractVector{<:Number} = [false])
 
     m = filter.d
     # Motion update
@@ -45,8 +45,8 @@ Uses Extended Kalman filter to run measurement update on predicted gaussian
 belief bp, given measurement vector y. If u is specified and filter.o.D has
 been declared, then matrix D will be factored into the y predictions.
 """
-function measure(filter::ExtendedKalmanFilter, bp::GaussianBelief, y::AbstractVector{<:AbstractFloat};
-                u::AbstractVector{<:AbstractFloat} = [false])
+function measure(filter::ExtendedKalmanFilter, bp::GaussianBelief, y::AbstractVector{a};
+                u::AbstractVector{b} = [false]) where {a<:Number, b<:Number}
 
     m = filter.o    
     # Measurement update
@@ -69,10 +69,10 @@ function measure(filter::ExtendedKalmanFilter, bp::GaussianBelief, y::AbstractVe
 end
 
 function smooth(smoother::ExtendedRtsSmoother, bs::GaussianBelief,
-    bf::GaussianBelief, u::AbstractVector{<:Number} = [false])
-bp = predict(smoother.f, bf, u)
-F = jacobian(StateJacobian(), smoother.f.d, bg.μ; u)
-G = (bp.Σ \ (bf.Σ * F))'
+    bf::GaussianBelief; u::AbstractVector{<:Number} = [false])
+bp = predict(smoother.f, bf; u)
+F = jacobian(StateJacobian(), smoother.f.d, bf.μ; u)
+G = (bp.Σ \ (F * bf.Σ))'
 μ = bf.μ + G*(bs.μ - bp.μ)
 Σ = bf.Σ + G*(bs.Σ - bp.Σ)*G'
 return GaussianBelief(μ, Σ)

@@ -45,11 +45,11 @@ LinearObservationModel o.
 """
 struct RtsSmoother <: AbstractSmoother
     f::KalmanFilter
+end
 
-    function RtsSmoother(d::LinearDynamicsModel, o::LinearObservationModel)
-        f = KalmanFilter(d, o)
-        new(f)
-    end
+function RtsSmoother(d::LinearDynamicsModel, o::LinearObservationModel)
+    f = KalmanFilter(d, o)
+    RtsSmoother(f)
 end
 
 """
@@ -60,11 +60,11 @@ LinearObservationModel o.
 """
 struct ExtendedRtsSmoother <: AbstractSmoother
     f::ExtendedKalmanFilter
+end
 
-    function ExtendedRtsSmoother(d::DynamicsModel, o::ObservationModel)
-        f = ExtendedKalmanFilter(d, o)
-        new(f)
-    end
+function ExtendedRtsSmoother(d::DynamicsModel, o::ObservationModel)
+    f = ExtendedKalmanFilter(d, o)
+    ExtendedRtsSmoother(f)
 end
 
 
