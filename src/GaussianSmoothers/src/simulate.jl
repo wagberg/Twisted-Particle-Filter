@@ -113,7 +113,7 @@ function run_filter(filter::AbstractFilter, bp::GaussianBelief, y::Vector{B}; u:
         log_likelihood = 0
         # iterate through and update beliefs
         for (_u, _y) in zip(u, y)
-            bf, ll = measure(filter, bp, y; u=_u)
+            bf, ll = measure(filter, bp, _y; u=_u)
             log_likelihood += ll
             push!(beliefs, bf)
             bp = predict(filter, bf; u=_u)
@@ -133,15 +133,15 @@ Given an initial __predictive__ belief  `b0`, matched-size arrays for action and
 histories and a filter, update the beliefs using the filter, run a backwards smoothing
 sweep, and return a vector of all smoothed beliefs and the log likelihood.
 """
-function run_smoother(smoother::AbstractSmoother, b0::GaussianBelief, action_history::Vector{A},
-    measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
+function run_smoother(smoother::AbstractSmoother, b0::GaussianBelief,
+    y::Vector{B}; u::Vector{A}) where {A<:AbstractVector, B<:AbstractVector}
        
-    filter_beliefs, ll = run_filter(smoother.f, b0, action_history, measurement_history)
+    filter_beliefs, ll = run_filter(smoother.f, b0, y; u)
 
-    bs = predict(smoother.f, filter_beliefs[end], action_history[end])
+    bs = predict(smoother.f, filter_beliefs[end]; u=u[end])
     smoothed_beliefs = Vector{GaussianBelief}()
-    for (u, bf) in zip(reverse(action_history), reverse(filter_beliefs))
-        bs = smooth(smoother, bs, bf, u)
+    for (_u, bf) in zip(reverse(u), reverse(filter_beliefs))
+        bs = smooth(smoother, bs, bf; u=_u)
         pushfirst!(smoothed_beliefs, bs)
     end
     return smoothed_beliefs, ll
@@ -155,12 +155,12 @@ histories and a filter, update the beliefs using the filter, run a backwards smo
 sweep, and return a vector of all smoothed beliefs and the log likelihood. The log likelihood
 is p(y_{2:T} | x_{1}).
 """
-function run_smoother_from_filtering(smoother::AbstractSmoother, bf::GaussianBelief, action_history::Vector{A},
+function run_smoother_from_filtering(smoother::AbstractSmoother, bf::GaussianBelief, action_history::Vector{A};
     measurement_history::Vector{B}) where {A<:AbstractVector, B<:AbstractVector}
     
     bp = predict(smoother.f, bf, action_history[1])
     
-    filter_beliefs, ll = run_filter(smoother.f, bp, action_history[2:end], measurement_history[2:end])
+    filter_beliefs, ll = run_filter(smoother.f, bp, action_history[2:end]; u=measurement_history[2:end])
 
     bs = predict(smoother.f, filter_beliefs[end], action_history[end])
     # smoothed_beliefs = Vector{GaussianBelief}()

@@ -29,13 +29,15 @@ export
 	ExtendedKalmanFilter,
 	UnscentedKalmanFilter,
 	GaussianBelief,
-	RtsSmoother
+	RtsSmoother,
+	ExtendedRtsSmoother
 include("kf_classes.jl")
 
 export 
 	simulate_step,
 	simulate,
 	run_filter,
+	run_smoother,
 	likelihood,
 	unpack
 include("simulate.jl")

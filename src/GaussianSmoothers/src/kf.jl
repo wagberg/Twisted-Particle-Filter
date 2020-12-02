@@ -22,9 +22,9 @@ end
 Uses Kalman filter to run prediction step on gaussian belief bf, given control
 vector u.
 """
-function predict(filter::KalmanFilter, bf::GaussianBelief,
-            u::AbstractVector{<:Number})
-μp = predict(filter.d, bf.μ, u)
+function predict(filter::KalmanFilter, bf::GaussianBelief;
+            u::AbstractVector{<:Number} = [false])
+μp = predict(filter.d, bf.μ; u)
 Σp = filter.d.A * bf.Σ * filter.d.A' + filter.d.M * cov(filter.d.d) * filter.d.M'
 return GaussianBelief(μp, Σp)
 end
@@ -37,12 +37,12 @@ Uses Kalman filter to run measurement update on predicted gaussian belief bp,
 given measurement vector y. If u is specified and filter.o.D has been declared,
 then matrix D will be factored into the y predictions
 """
-function measure(filter::KalmanFilter, bp::GaussianBelief, y::AbstractVector{<:Number},
+function measure(filter::KalmanFilter, bp::GaussianBelief, y::AbstractVector{<:Number};
                 u::AbstractVector{<:Number} = [false])
 
 m = filter.o
 # Predict measurement
-yp = measure(m, bp.μ, u)
+yp = measure(m, bp.μ; u)
 
 # Likelihood
 S = m.C*bp.Σ*m.C' + m.N*cov(m.d)*m.N'
@@ -57,11 +57,11 @@ K = (S\(m.C * bp.Σ))'
 return GaussianBelief(μf, Σf), ll
 end
 
-function smooth(smoother::RtsSmoother, bs⁺::GaussianBelief,
-    bf::GaussianBelief, u::AbstractVector{<:Number} = [false])
-bp = predict(smoother.f, bf, u)
-G = (bp.Σ \ (bf.Σ * smoother.f.d.A))'
+function smooth(smoother::RtsSmoother, bs::GaussianBelief,
+    bf::GaussianBelief; u::AbstractVector{<:Number} = [false])
+bp = predict(smoother.f, bf; u)
+G = (bp.Σ \ (smoother.f.d.A * bf.Σ))'
 μ = bf.μ + G*(bs.μ - bp.μ)
 Σ = bf.Σ + G*(bs.Σ - bp.Σ)*G'
-return bs
+return GaussianBelief(μ, Σ)
 end

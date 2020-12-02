@@ -6,7 +6,7 @@ using LinearAlgebra
 using Distributions
 using Random
 import Base
-include("resampling.jl");
+include("src/resampling.jl");
 include("OneToNWithout.jl");
 
 """
@@ -272,7 +272,7 @@ function pf!(ssm::SSMInstance{<: GenericSSM}, θ;
      end
      # Compute weights.
      for j in all_particle_indices
-        @inbounds W[j, t] = model.lG(X[j, t], t, data, θ);
+        @inbounds W[j, t] = model.lG(X[a[j], t - 1], X[j, t], t, data, θ);
         @inbounds wnorm[j] = W[j, t];
      end
      V .= V .+ normalise_logweights!(wnorm);
