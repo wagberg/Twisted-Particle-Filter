@@ -37,7 +37,7 @@ pf_storage = ParticleStorage(FloatParticle{nx}, maximum(M), T)
 # Estimate the likelihood 40 times for each number of particles in M  using the particle filter
 ll = zeros(length(M), 40)
 for i in eachindex(M)
-    println(m, " particles")
+    println(M[i], " particles")
     for j in ProgressBar(1:size(ll,2))
         ll[i, j] = pf!(pf_storage, model, data, θ; n_particles = M[i])
     end
