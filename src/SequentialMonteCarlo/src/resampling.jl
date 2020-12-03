@@ -7,7 +7,7 @@ abstract type Resampling end
 struct MultinomialResampling <: Resampling end
 struct SystematicResampling <: Resampling end
 
-function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::SystematicResampling; conditional=false)::Nothing
+function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::SystematicResampling, conditional=false)::Nothing
   if conditional
     N = length(ind)
     @inbounds q = N*w[1]
@@ -39,7 +39,7 @@ function _systematic_resample!(ind::AVec{Int}, w::AVec{<:AFloat}, U::Float64)::N
 end
 
 
-function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling; conditional=false)::Nothing
+function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling, conditional::Bool=false)::Nothing
   if conditional
     N = length(ind) - 1
     @inbounds ind[1] = 1

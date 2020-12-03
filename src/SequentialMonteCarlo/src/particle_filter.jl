@@ -4,7 +4,7 @@ abstract type SSMStorage end
 Preallocate storage for particle filter.
 
 """
-struct ParticleStorage{P <: Particle, T <: AFloat} <: SSMStorage
+struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
     X::Matrix{P}
     W::Matrix{T}
     A::Matrix{Int}
@@ -13,7 +13,7 @@ struct ParticleStorage{P <: Particle, T <: AFloat} <: SSMStorage
     ref::Vector{T}
     filtered_index::Base.RefValue{Int}
 
-    function ParticleStorage(::Type{P}, n_particles::Integer, t::Integer) where {P<:Particle}
+    function ParticleStorage(::Type{P}, n_particles::Integer, t::Integer) where {P <: Particle}
         X = [P() for n in 1:n_particles, j in 1:t]
         W = zeros(Float64, n_particles, t)
         V = zeros(Float64, n_particles)
@@ -21,7 +21,7 @@ struct ParticleStorage{P <: Particle, T <: AFloat} <: SSMStorage
         A = zeros(typeof(n_particles), n_particles, t)
         ref = ones(typeof(n_particles), t)
         filtered_index = Ref(0)
-        new{P, Float64}(X, W, A, V, wnorm, ref, filtered_index)
+        new{P,Float64}(X, W, A, V, wnorm, ref, filtered_index)
     end
 end
 
@@ -31,10 +31,67 @@ function particle_count(storage::ParticleStorage)
     size(storage.X, 1)
 end
 
-
-function pf!(storage::ParticleStorage, model::SSM, data, θ;
-        resampling::Resampling = MultinomialResampling(), conditional::Bool = false, n_particles::Int = particle_count(storage) )
+"""
+Bootstrap particle filter.
+Uses transition distribution as proposal.
+Never evaluates transition density. Only requires observation density.
+"""
+function bpf!(storage::ParticleStorage, model::SSM, data, θ;
+        resampling::Resampling=MultinomialResampling(), conditional::Bool=false, n_particles::Int=particle_count(storage) )
     
+    @assert n_particles <= particle_count(storage)
+    T = length(data.y)
+    X = view(storage.X, 1:n_particles, :);
+    W = view(storage.W, 1:n_particles, :);
+    A = view(storage.A, 1:n_particles, :);
+    # ref = view(storage.ref, 1:n_particles)
+
+    ll = 0
+
+    start = conditional ? 2 : 1
+    for j in start:n_particles
+        @inbounds simulate_initial!(X[j,1], model, data, θ)
+    end
+
+    for j in 1:n_particles
+        @inbounds W[j,1] = log_observation_density(X[j,1], model, 1, data, θ)
+    end
+
+    logΣexp = logsumexp(W[:, 1])
+    ll += logΣexp - log(n_particles)
+    W[:, 1] .= exp.(W[:, 1] .- logΣexp)
+
+    for t in 2:T
+        a = view(A, :, t - 1)
+        resample!(a, W[:, t - 1], resampling, conditional)
+        
+        for j in start:n_particles
+            simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
+        end
+
+        for j in 1:n_particles
+            @inbounds W[j,t] = log_observation_density(X[j,t], model, t, data, θ)
+        end
+        logΣexp = logsumexp(W[:, t])
+        ll += logΣexp - log(n_particles)
+        W[:, t] .= exp.(W[:, t] .- logΣexp)
+    end
+    ll;
+end
+
+
+function log_potential(p::FloatParticle, model::SSM, t, data, θ)
+    # p(y_{t+1:T} | x_t) = p(x_t | y_{1:T}) * p(y_{1:T}) / (p(x_{t} | y_{1:t}) * p(y_{1:t}))
+    logpdf(MvNormal(data.ks.smooth_mean[t], data.ks.smooth_Sigma[t]), p.x) + 
+        data.ks.log_likelihood[end] - 
+        logpdf(MvNormal(data.ks.filter_mean[t], data.ks.filter_Sigma[t]), p.x) -
+        data.ks.log_likelihood[t]
+end
+
+
+function tpf!(storage::ParticleStorage, model::SSM, data, θ;
+    resampling::Resampling=MultinomialResampling(), conditional::Bool=false, n_particles::Int=particle_count(storage) )
+
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
     X = view(storage.X, 1:n_particles, :);
@@ -45,7 +102,7 @@ function pf!(storage::ParticleStorage, model::SSM, data, θ;
 
     for j in 1:n_particles
         @inbounds simulate_initial!(X[j,1], model, data, θ)
-        @inbounds W[j,1] = log_observation_density(X[j,1], model, 1, data, θ)
+        @inbounds W[j,1] = log_observation_density(X[j,1], model, 1, data, θ) + log_potential(X[j,1], model, 1, data, θ)
     end
 
     logΣexp = logsumexp(W[:, 1])
@@ -53,15 +110,17 @@ function pf!(storage::ParticleStorage, model::SSM, data, θ;
     W[:, 1] .= exp.(W[:, 1] .- logΣexp)
 
     for t in 2:T
-        a = view(A, :, t-1)
-        resample!(a, W[:, t-1], resampling)
+        a = view(A, :, t - 1)
+        resample!(a, W[:, t - 1], resampling)
         
         for j in 1:n_particles
-            simulate_transition!(X[j,t], X[a[j],t-1], model, t-1, data, θ)
+            simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
         end
 
         for j in 1:n_particles
-            @inbounds W[j,t] = log_observation_density(X[j,t], model, t, data, θ)
+            @inbounds W[j,t] = log_observation_density(X[j,t], model, t, data, θ) + 
+                log_potential(X[j,t], model, t, data, θ) -
+                log_potential(X[a[j],t - 1], model, t - 1, data, θ)
         end
         logΣexp = logsumexp(W[:, t])
         ll += logΣexp - log(n_particles)

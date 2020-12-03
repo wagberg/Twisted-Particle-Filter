@@ -12,6 +12,7 @@ RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SequentialMonteCarlo = "f9b7e06c-507a-49e7-80c8-92078bbfddc7"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
