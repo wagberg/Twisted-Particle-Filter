@@ -7,34 +7,59 @@ abstract type Resampling end
 struct MultinomialResampling <: Resampling end
 struct SystematicResampling <: Resampling end
 
-function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::SystematicResampling)
-  N::Float64 = length(ind)
-  q = rand()/N
-  s = 0.0
-  i::Int = 1
-  for n in 1:N
-    while s < q
-      @inbounds s += w[i]
-      i += 1
+function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::SystematicResampling; conditional=false)::Nothing
+  if conditional
+    N = length(ind)
+    @inbounds q = N*w[1]
+    if @inbounds q <= 1
+       U = q*rand()
+    else
+      r = mod(q, 1)
+      U = r*ceil(q)/q < rand() ? r*rand() : r + (1-r)*rand()
     end
-    q += 1/N
-    @inbounds ind[n] = i
+  else
+    U = rand()
+  end
+  _systematic_resample!(ind, w, U)
+end
+
+function _systematic_resample!(ind::AVec{Int}, w::AVec{<:AFloat}, U::Float64)::Nothing
+  N = length(ind)
+  v = 0.0
+  s = U
+  m = 0
+  for n in 1:N
+    while v < s
+      m += 1
+      @inbounds v += N*w[m]
+    end
+    @inbounds ind[n] = m
+    s += 1
   end
 end
 
-function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling)
-  N = length(ind)
+
+function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling; conditional=false)::Nothing
+  if conditional
+    N = length(ind) - 1
+    @inbounds ind[1] = 1
+  else
+    N = length(ind)
+  end
   q = cumsum(randexp(N+1))
   q ./= q[end]
-  @inbounds s::Float64 = w[1]
-  i::Int = 1
-  for n in 1:N
-    while s < q[n]
+  @inbounds s = w[1]
+  i = one(eltype(ind))
+  start = conditional ? 2 : 1
+  for n in start:N
+    @inbounds while s < q[n]
       i += 1
       @inbounds s += w[i]
     end
     @inbounds ind[n] = i
   end
+  shuffle!(view(ind, start:N))
+  nothing
 end
 
 # function resample!(ind::AbstractVector{Int64}, p::AbstractVector{<: Real}, ::MultinomialResampling;
