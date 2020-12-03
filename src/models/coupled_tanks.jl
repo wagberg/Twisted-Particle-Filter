@@ -2,19 +2,6 @@ const CoupledTankParticle = FloatParticle{2}
 
 """
 Coupled tank model
-
-xₜ₊₁ = 
-
-xₜ | xₜ₋₁ ~ N(xₜ ; ϕxₜ₋₁, σ²)
-yₜ | xₜ ~N(yₜ ; 0, β²exp(xₜ))
-x₁ ~ N(x₁ ; μ₁, σ₁²)
-
-Parameters:
-* `μ₁` - Initial state mean
-* `logσ₁` - Initial state std log(σ₁)
-* `logϕ` - log(ϕ)
-* `logσ` - log(σ)
-* `logβ` - log(β)
 """
 struct CoupledTank <: SSM{CoupledTankParticle}
 end
@@ -32,11 +19,6 @@ end
     logσe²::Float64 = log(0.013531902670792)
     Ts::Float64 = 4.0
 end
-
-# @inline function UnPack.unpack(x::TankParameter, ::Val{f}) where {f}
-#     exp(getproperty(x, f))
-# end
-
 
 function SequentialMonteCarlo.transition_function(x, ::CoupledTank, t, data, θ)
     @unpack logk₁, logk₂, logk₃, logk₄, logk₅, logk₆, Ts  = θ
