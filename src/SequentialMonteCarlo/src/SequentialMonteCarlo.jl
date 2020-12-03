@@ -15,6 +15,7 @@ const AFloat = AbstractFloat
 abstract type Particle end
 abstract type SSMParameter end
 
+include("utils.jl")
 include("statespace.jl")
 include("floatparticle.jl")
 include("kalman.jl")
@@ -33,6 +34,7 @@ export
     simulate!,
     ekf!,
     smooth!,
-    pf!
+    bpf!,
+    tpf!
 
 end # module
