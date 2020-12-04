@@ -40,27 +40,51 @@ end
 
 
 function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling, conditional::Bool=false)::Nothing
-  if conditional
-    N = length(ind) - 1
-    @inbounds ind[1] = 1
-  else
-    N = length(ind)
-  end
+  N = length(ind) 
   q = cumsum(randexp(N+1))
   q ./= q[end]
   @inbounds s = w[1]
   i = one(eltype(ind))
-  start = conditional ? 2 : 1
-  for n in start:N
+  for n in 1:N
     @inbounds while s < q[n]
       i += 1
       @inbounds s += w[i]
     end
     @inbounds ind[n] = i
   end
+  start = 1
   shuffle!(view(ind, start:N))
+  if conditional
+    @inbounds ind[1] = 1
+  end
   nothing
 end
+
+# OLD VERSION MULTI
+# function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling, conditional::Bool=false)::Nothing
+#   if conditional
+#      N = length(ind) - 1
+#      @inbounds ind[1] = 1
+#   else
+#     N = length(ind)
+#   end
+#   q = cumsum(randexp(N+1))
+#   q ./= q[end]
+#   @inbounds s = w[1]
+#   i = one(eltype(ind))
+#   start = conditional ? 2 : 1
+#   for n in start:N
+#     @inbounds while s < q[n]
+#       i += 1
+#       @inbounds s += w[i]
+#     end
+#     @inbounds ind[n] = i
+#   end
+#   shuffle!(view(ind, start:N))
+#   nothing
+# end
+
+
 
 # function resample!(ind::AbstractVector{Int64}, p::AbstractVector{<: Real}, ::MultinomialResampling;
 #                    ref_prev::Int = 0, ref_cur::Int = 0)::Nothing
