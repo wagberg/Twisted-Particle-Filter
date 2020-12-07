@@ -7,6 +7,7 @@ using StatsPlots
 using ProgressBars
 using Random
 using DataFrames
+using LinearAlgebra
 
 Random.seed!(2);
 
@@ -14,11 +15,12 @@ Random.seed!(2);
 nx = 3
 nu = 1
 ny = 1
-T = 100
+T = 50
 M = [10, 50, 100, 500]
 N_mc = 200
 # M_tpf = [10, 50, 100]
 M_tpf = M
+M_max = 100_000
 
 # Get default parameter values
 θ = LGSSMParameter{nx, nu, ny}()
@@ -27,15 +29,97 @@ model = LGSSM{nx}()
 # generate input signal and allocate for output
 data = (u = [randn(nu) for i in 1:T], y = [zeros(ny) for i in 1:T], ks=KalmanStorage(model, T))
 
+P = SequentialMonteCarlo.particletype(model)
+ptrue = [P() for t in 1:T]
 # Simulate the model storing the output in data
-simulate!(data.y, model, data, θ)
+simulate!(data.y, ptrue, model, data, θ)
 
 # Preallocate storage for the Kalman filter
 ekf!(data.ks, model, data, θ)
 smooth!(data.ks, model, data, θ)
 
 # Preallocate storage for the particle filter
-pf_storage = ParticleStorage(model, maximum(M), T)
+bpfs = ParticleStorage(model, M_max, T)
+tpfs = ParticleStorage(model, M_max, T)
+
+ll_bpf = bpf!(bpfs, model, data, θ)
+ll_tpf = tpf!(tpfs, model, data, θ)
+
+##
+trueX = hcat([p.x for p in ptrue]...)'
+rtsX = hcat(data.ks.smooth_mean...)'
+rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
+
+kfX = hcat(data.ks.filter_mean...)'
+kfσ = sqrt.(hcat(diag.(data.ks.filter_Sigma)...))'
+
+
+
+##
+p1 = plot(trueX[:,1], ls=:dot, label="x_1")
+plot!(kfX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
+p2 = plot(trueX[:,2], ls=:dot, label="x_2")
+plot!(kfX[:,2], ribbon=2*rtsσ[:,2], label="xhat_2")
+p3 = plot(trueX[:,3], ls=:dot, label="x_3")
+plot!(kfX[:,3], ribbon=2*rtsσ[:,3], label="xhat_3")
+plot(p1, p2, p3, title="Kalman filter estimates")
+
+##
+p1 = plot(trueX[:,1], ls=:dot, label="x_1")
+plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
+p2 = plot(trueX[:,2], ls=:dot, label="x_2")
+plot!(rtsX[:,2], ribbon=2*rtsσ[:,2], label="xhat_2")
+p3 = plot(trueX[:,3], ls=:dot, label="x_3")
+plot!(rtsX[:,3], ribbon=2*rtsσ[:,3], label="xhat_3")
+plot(p1, p2, p3, title="RTS smother")
+
+##
+Wnorm = exp.(bpfs.W .- maximum(bpfs.W, dims=1))
+for i in 1:size(Wnorm, 2)
+    @views normalize!(Wnorm[:,i], 1)
+end
+
+Xbpf = map(SequentialMonteCarlo.toSVector, bpfs.X)
+bpfX = Array(hcat(sum(Wnorm .* Xbpf, dims=1)...)')
+
+bpfσ = similar(bpfX)
+for i in 1:size(bpfσ, 1)
+    @views bpfσ[i,:] .= sqrt.(sum(Wnorm[:,i] .* map(x->(x.-bpfX[i,:]).^2, Xbpf[:,i])))
+end
+
+Wnorm = exp.(tpfs.W .- maximum(tpfs.W, dims=1))
+for i in 1:size(Wnorm, 2)
+    @views normalize!(Wnorm[:,i], 1)
+end
+
+Xtpf = map(SequentialMonteCarlo.toSVector, tpfs.X)
+tpfX = Array(hcat(sum(Wnorm .* Xtpf, dims=1)...)')
+
+tpfσ = similar(tpfX)
+for i in 1:size(tpfσ, 1)
+    @views tpfσ[i,:] .= sqrt.(sum(Wnorm[:,i] .* map(x->(x.-tpfX[i,:]).^2, Xtpf[:,i])))
+end
+
+
+
+##
+p1 = plot(bpfX[:,1], label="bpf", ribbon=2*bpfσ[:,1], fillalpha=0.5)
+plot!(kfX[:,1], label="kf", ribbon=2*kfσ[:,1], fillalpha=0.5)
+p2 = plot(bpfX[:,2], label="bpf", ribbon=2*bpfσ[:,2], fillalpha=0.5)
+plot!(kfX[:,2], label="kf", ribbon=2*kfσ[:,2], fillalpha=0.5)
+p3 = plot(bpfX[:,3], label="bpf", ribbon=2*bpfσ[:,3], fillalpha=0.5)
+plot!(kfX[:,3], label="kf", ribbon=2*kfσ[:,3], fillalpha=0.5)
+plot(p1, p2, p3)
+##
+p4 = plot(tpfX[:,1], label="tpf", ribbon=2*tpfσ[:,1], fillalpha=0.5)
+plot!(rtsX[:,1], label="rts", ribbon=2*rtsσ[:,1], fillalpha=0.5)
+p5 = plot(tpfX[:,2], label="tpf", ribbon=2*tpfσ[:,2], fillalpha=0.5)
+plot!(rtsX[:,2], label="rts", ribbon=2*rtsσ[:,2], fillalpha=0.5)
+p6 = plot(tpfX[:,3], label="tpf", ribbon=2*tpfσ[:,3], fillalpha=0.5)
+plot!(rtsX[:,3], label="rts", ribbon=2*rtsσ[:,3], fillalpha=0.5)
+plot(p4, p5, p6)
+
+##
 
 # Estimate the likelihood 40 times for each number of particles in M  using the particle filter
 ll = zeros(length(M), N_mc)
@@ -65,8 +149,16 @@ df_tpf = stack(df_tpf)
 insertcols!(df_tpf, 2, method=["Twisted" for i = 1:size(df_tpf, 1)])
 
 append!(df, df_tpf)
+##
 # @df df violin(string.(:method), :value, title="Likelihood estimates bootstrap PF", legend=false)
-p1 = @df filter(row -> row[:method] == "Bootstrap", df) violin(string.(:variable), :value, side=:left, label="Bootstrap", legend=false)
+p1 = @df filter(row -> row[:method] == "Bootstrap", df) violin(
+    string.(:variable),
+    :value,
+    side=:left,
+    label="Bootstrap",
+    legend=false,
+    # xticks=(1:length(M), string.(M_tpf))
+    )
 @df filter(row -> row[:method] == "Twisted", df) violin!(string.(:variable), :value, side=:right, label="Twisted")
 # boxplot!(ll_tpf', legend=false, xticks=(1:length(M), string.(M_tpf)))
 hline!([data.ks.log_likelihood[end]], color="black", width=2, ls=:dash)

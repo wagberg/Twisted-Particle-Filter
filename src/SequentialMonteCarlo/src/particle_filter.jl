@@ -165,7 +165,8 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
     # Compute weights
     for j in 1:n_particles
         @inbounds Ψ[j, 1] = log_potential(X[j, 1], model, 1, data, θ)
-        @inbounds W[j, 1] = (log_observation_density(X[j, 1], model, 1, data, θ)
+        @inbounds W[j, 1] = (
+            log_observation_density(X[j, 1], model, 1, data, θ)
             + log_initial_density(X[j, 1], model, data, θ)
             + Ψ[j, 1]
             - log_proposal_density(X[j, 1], model, data, θ))
@@ -191,7 +192,7 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
                  + log_observation_density(X[j, t], model, t, data, θ)
                  + Ψ[j, t]
                  - Ψ[a[j], t-1]
-                 - log_proposal_density(X[j, t], X[a[j], t-1], model, t-1, data, θ))
+                 - log_proposal_density(X[j, t], X[a[j], t-1], model, t, data, θ))
         end
         @views logΣexp = logsumexp(W[:, t])
         ll += logΣexp - log(n_particles)
