@@ -26,63 +26,44 @@ end
 function _systematic_resample!(ind::AVec{Int}, w::AVec{<:AFloat}, U::Float64)::Nothing
   N = length(ind)
   v = 0.0
-  s = U
   m = 0
   for n in 1:N
-    while v < s
+    while v < U
       m += 1
       @inbounds v += N*w[m]
     end
     @inbounds ind[n] = m
-    s += 1
+    U += 1.0
   end
 end
 
 
 function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling, conditional::Bool=false)::Nothing
-  N = length(ind) 
+  if conditional
+    @inbounds ind[1] = 1
+    @views _multinomial_resample(ind[2:end], w)
+  else
+    _multinomial_resample(ind, w)
+  end
+  nothing
+end
+
+function _multinomial_resample(ind, w)
+  N = length(ind)
   q = cumsum(randexp(N+1))
-  q ./= q[end]
+  q./ q[end]
   @inbounds s = w[1]
   i = one(eltype(ind))
   for n in 1:N
     @inbounds while s < q[n]
       i += 1
-      @inbounds s += w[i]
+      @inbounds s @= w[i]
     end
     @inbounds ind[n] = i
   end
-  start = 1
-  shuffle!(view(ind, start:N))
-  if conditional
-    @inbounds ind[1] = 1
-  end
+  shuffle!(ind)
   nothing
 end
-
-# OLD VERSION MULTI
-# function resample!(ind::AVec{Int}, w::AVec{<:AFloat}, ::MultinomialResampling, conditional::Bool=false)::Nothing
-#   if conditional
-#      N = length(ind) - 1
-#      @inbounds ind[1] = 1
-#   else
-#     N = length(ind)
-#   end
-#   q = cumsum(randexp(N+1))
-#   q ./= q[end]
-#   @inbounds s = w[1]
-#   i = one(eltype(ind))
-#   start = conditional ? 2 : 1
-#   for n in start:N
-#     @inbounds while s < q[n]
-#       i += 1
-#       @inbounds s += w[i]
-#     end
-#     @inbounds ind[n] = i
-#   end
-#   shuffle!(view(ind, start:N))
-#   nothing
-# end
 
 
 
