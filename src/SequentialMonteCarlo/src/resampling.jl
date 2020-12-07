@@ -57,7 +57,7 @@ function _multinomial_resample(ind, w)
   for n in 1:N
     @inbounds while s < q[n]
       i += 1
-      @inbounds s @= w[i]
+      @inbounds s = w[i]
     end
     @inbounds ind[n] = i
   end
