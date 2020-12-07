@@ -9,11 +9,14 @@ using Distributions
 using Parameters
 using DataFrames
 using CSV
-using StatsPlots 
+using ProgressBars
 
 includet(projectdir("src/models/coupled_tanks.jl"))
 ##
-M = 200 # Number of particles
+M = [10, 50, 100, 500, 1_000] # Number of particles
+M = [10, 100, 1_000] # Number of particles
+M_max = 10_000
+N_mc = 100 # Number of Monte Carlo runs fo estimating likelihood
 
 θ = TankParameter()
 model = CoupledTank()
@@ -24,19 +27,59 @@ select!(df, Not(6))
 select!(df, Not(:Ts))
 dropmissing!(df, disallowmissing=true)
 
-data = (;y=[[x] for x in df.yVal], u=[[u] for u in df.uVal])
+T = size(df, 1)
+ps = ParticleStorage(model, M_max, T)
+data = (;
+    y=[[x] for x in df.yVal],
+    u=[[u] for u in df.uVal],
+    ks=KalmanStorage(model, T))
 
-ysim = [zeros(1) for t in 1:length(data.u)]
-simulate!(ysim, model, data, θ)
+ekf!(data.ks, model, data, θ)
+smooth!(data.ks, model, data, θ)
 
-ps = ParticleStorage(model, M, length(data.y))
-ks = KalmanStorage(model, length(data.y))
+@time bpf!(ps, model, data, θ, n_particles = 10_000)
+@time tpf!(ps, model, data, θ, n_particles = 1_000)
+##
 
-ekf!(ks, model, data, θ)
-smooth!(ks, model, data, θ)
+ll = zeros(N_mc, 2*length(M))
+for i in eachindex(M)
+    println("Running ", M[i]," particles:")
+    for j in ProgressBar(1:N_mc)
+        ll[j,i] = bpf!(ps, model, data, θ; n_particles=M[i])
+        ll[j,length(M)+i] = tpf!(ps, model, data, θ; n_particles=M[i])
+    end
+end
 
-pf!(ps, model, data, θ)
+ll_hat = bpf!(ps, model, data, θ)
 
+##
+
+d = DataFrame(vcat(([hcat(ll[:,i+1], fill(M[mod(i,length(M))+1], size(ll,1)), fill(i>length(M)-1 ? "Twisted" : "Bootstrap", size(ll,1))) for i in 0:2*length(M)-1])...))
+names!(d, [:likelihood, :particles, :method])
+
+##
+using Gadfly, Cairo, Fontconfig
+
+p = Gadfly.plot(
+    d,
+    x=:particles,
+    y=:likelihood,
+    color=:method,
+    Gadfly.Scale.x_discrete(levels=M, labels=string),
+    Gadfly.Geom.boxplot,
+    Gadfly.Theme(boxplot_spacing=0.2*Gadfly.cx),
+    Gadfly.Guide.colorkey(title="Method")#, pos=[0.0*Gadfly.w,-0.3*Gadfly.h])
+    )
+
+##
+p_traj = Gadfly.plot(
+
+)
+
+##
+p |> PDF(projectdir("plots", "likelihood_estimated.pdf"))
+
+##
 dx = length(ps.X[1,1].x)
 X = zeros(size(ps.X)..., dx)
 for i in 1:size(ps.X,1), j in 1:size(ps.X, 2), n in 1:dx

@@ -12,6 +12,12 @@ function copy!(dest::FloatParticle{N}, src::FloatParticle{N}) where N
     end
 end
 
+function swap!(dest::FloatParticle{N}, src::FloatParticle{N}) where N
+    for i in eachindex(src.x)
+        @inbounds src.x[i], dest.x[i] = dest.x[i], src.x[i]
+    end
+end
+
 # function copy!(dest::FloatParticle{N, T}, src::StaticArray{Tuple{N}, T, 1}) where {N, T}
 #     for i in eachindex(dest.x)
 #         @inbounds dest.x[i] = src[i];
@@ -50,7 +56,7 @@ end
 
 function log_transition_density(pnext::FloatParticle{N}, pcurr::FloatParticle{N}, model::SSM, t::Integer, data, θ) where N
     Q = transition_covariance(pcurr.x, model, t, data, θ)
-    logpdf(MvNormal(Q), pnext.x .- transition_funciton(pcurr.x, model, t, data, θ))
+    logpdf(MvNormal(Q), pnext.x .- transition_function(pcurr.x, model, t, data, θ))
 end
 
 function simulate_initial!(p::FloatParticle{N}, model::SSM, data, θ) where N
