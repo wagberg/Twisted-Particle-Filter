@@ -6,22 +6,24 @@ Preallocate storage for particle filter.
 """
 struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
     X::Matrix{P}
+    Xref::Vector{P}
     W::Matrix{T}
     A::Matrix{Int}
     V::Vector{T}
     wnorm::Vector{T}
-    ref::Vector{T}
+    ref::Vector{Int}  # Vector of indices for the reference trajectory, 
     filtered_index::Base.RefValue{Int}
 
     function ParticleStorage(::Type{P}, n_particles::Integer, t::Integer) where {P <: Particle}
         X = [P() for n in 1:n_particles, j in 1:t]
+        Xref = [P() for j in 1:t]
         W = zeros(Float64, n_particles, t)
         V = zeros(Float64, n_particles)
         wnorm = zeros(Float64, n_particles)
         A = zeros(typeof(n_particles), n_particles, t)
-        ref = ones(typeof(n_particles), t)
+        ref = zeros(typeof(n_particles), t)
         filtered_index = Ref(0)
-        new{P,Float64}(X, W, A, V, wnorm, ref, filtered_index)
+        new{P,Float64}(X, Xref, W, A, V, wnorm, ref, filtered_index)      
     end
 end
 
@@ -29,6 +31,33 @@ ParticleStorage(model::SSM, n_particles, t) = ParticleStorage(particletype(model
 
 function particle_count(storage::ParticleStorage)
     size(storage.X, 1)
+end
+
+function sample_ref_ancestor_final(w::AVec{Float64}, rng::AbstractRNG = Random.GLOBAL_RNG)
+    u = rand(rng)
+    csum = zero(Float64)
+    N = length(w)
+    for i in 1:N
+        csum += @inbounds w[i]
+        if u <= csum
+            return i
+        end
+    end
+    N   # return N if loop terminates
+end
+
+function generate_trajectory(A::AMat{Int}, X::AMat{<:Particle}, ref::AVec{Int}, finalInd::Integer) # Add Xref::AVec{<:Particle}, as argumet if want to store Xref separately
+    # Change X[1,t] to Xref[t] if want to store reference separately
+    
+    T = size(X, 2)
+    
+    ref[T] = finalInd  # Save sampled trajectory on last place in ref
+    X[1,T] = X[finalInd,T]
+    for t in (T-1):-1:1
+        ref[t] = A[ref[t+1],t]
+        X[1,t] = X[ref[t],t]
+    end
+    X[1,:]
 end
 
 """
@@ -44,7 +73,8 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
     X = view(storage.X, 1:n_particles, :);
     W = view(storage.W, 1:n_particles, :);
     A = view(storage.A, 1:n_particles, :);
-    # ref = view(storage.ref, 1:n_particles)
+    ref = view(storage.ref, 1:T)
+    # Xref = view(storage.Xref,1:T)
 
     ll = 0
 
@@ -64,7 +94,7 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
     for t in 2:T
         a = view(A, :, t - 1)
         resample!(a, W[:, t - 1], resampling, conditional)
-        
+
         for j in start:n_particles
             simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
         end
@@ -76,6 +106,13 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
         ll += logΣexp - log(n_particles)
         W[:, t] .= exp.(W[:, t] .- logΣexp)
     end
+
+    if conditional
+        finalInd = sample_ref_ancestor_final(W[:, T]);
+        Xref = generate_trajectory(A, X, ref, finalInd);  # Add Xref here if want to store Xref separately between runs
+        return Xref;
+    end
+    
     ll;
 end
 
