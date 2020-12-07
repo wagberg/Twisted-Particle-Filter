@@ -51,13 +51,13 @@ end
 function _multinomial_resample(ind, w)
   N = length(ind)
   q = cumsum(randexp(N+1))
-  q./ q[end]
-  @inbounds s = w[1]
-  i = one(eltype(ind))
+  q = q./ q[end]
+  i = 1
+  @inbounds s = w[i]
   for n in 1:N
     @inbounds while s < q[n]
       i += 1
-      @inbounds s = w[i]
+      @inbounds s += w[i]
     end
     @inbounds ind[n] = i
   end
