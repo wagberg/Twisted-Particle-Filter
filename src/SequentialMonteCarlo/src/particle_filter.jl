@@ -66,17 +66,31 @@ end
 
 function generate_trajectory(A::AMat{Int}, X::AMat{<:Particle}, ref::AVec{Int}, finalInd::Integer) # Add Xref::AVec{<:Particle}, as argumet if want to store Xref separately
     # Change X[1,t] to Xref[t] if want to store reference separately
-    println(typeof(X))
     T = size(X, 2)
     
     ref[T] = finalInd  # Save sampled trajectory on last place in ref
-    X[1,T] = X[finalInd,T]
+    X[1,T].x .= X[finalInd,T].x
     for t in (T-1):-1:1
         ref[t] = A[ref[t+1],t]
-        X[1,t] = X[ref[t],t]
+        X[1,t].x .= X[ref[t],t].x
     end
     #X[1,:]
 end
+
+
+#function generate_trajectory(A::AMat{Int}, X::AMat{<:Particle}, ref::AVec{Int}, finalInd::Integer) # Add Xref::AVec{<:Particle}, as argumet if want to store Xref separately
+#    # Change X[1,t] to Xref[t] if want to store reference separately
+#    println(typeof(X))
+#    T = size(X, 2)
+#    
+#    ref[T] = finalInd  # Save sampled trajectory on last place in ref
+#    X[1,T] = X[finalInd,T]
+#    for t in (T-1):-1:1
+#        ref[t] = A[ref[t+1],t]
+#        X[1,t] = X[ref[t],t]
+#    end
+#    #X[1,:]
+#end
 
 function compute_ancestor_weights(Xi::AVec{<:Particle}, Xref::Particle, W::AVec{Float64}, wancestor::AVec{Float64}, model::SSM, t::Integer, data, θ) # (anc, xⁱₜ₋₁, xₜʳ,wⁱₜ₋₁ )
     n_particles = length(W)
