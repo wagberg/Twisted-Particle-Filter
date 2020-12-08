@@ -9,7 +9,7 @@ using Random
 using DataFrames
 using LinearAlgebra
 
-Random.seed!(2);
+Random.seed!(1);
 
 ##
 nx = 3
@@ -128,9 +128,9 @@ for i in eachindex(M)
 end
 
 df = DataFrame(ll')
-names!(df, Symbol.(M))
+rename!(df, Symbol.(M))
 df = stack(df)
-insertcols!(df, 2, method=["Bootstrap" for i = 1:size(df, 1)])
+insertcols!(df, :method=>["Bootstrap" for i = 1:size(df, 1)])
 
 ll_tpf = zeros(length(M_tpf), N_mc)
 for i in eachindex(M_tpf)
@@ -141,9 +141,9 @@ for i in eachindex(M_tpf)
 end
 
 df_tpf = DataFrame(ll_tpf')
-names!(df_tpf, Symbol.(M_tpf))
+rename!(df_tpf, Symbol.(M_tpf))
 df_tpf = stack(df_tpf)
-insertcols!(df_tpf, 2, method=["Twisted" for i = 1:size(df_tpf, 1)])
+insertcols!(df_tpf, :method=>["Twisted" for i = 1:size(df_tpf, 1)])
 
 append!(df, df_tpf)
 ##
