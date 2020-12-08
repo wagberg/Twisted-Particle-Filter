@@ -4,6 +4,7 @@ authors = ["wagberg"]
 [deps]
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 Cairo = "159f3aea-2a34-519c-b102-8c37f9878175"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 Fontconfig = "186bb1d3-e1f7-5a2c-a377-96d770f13627"
