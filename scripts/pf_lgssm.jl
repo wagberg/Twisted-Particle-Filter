@@ -153,14 +153,14 @@ p1 = @df filter(row -> row[:method] == "Bootstrap", df) violin(
     :value,
     side=:left,
     label="Bootstrap",
-    legend=false,
+    legend=true,
     # xticks=(1:length(M), string.(M_tpf))
     )
 @df filter(row -> row[:method] == "Twisted", df) violin!(string.(:variable), :value, side=:right, label="Twisted")
 # boxplot!(ll_tpf', legend=false, xticks=(1:length(M), string.(M_tpf)))
-hline!([data.ks.log_likelihood[end]], color="black", width=2, ls=:dash)
+hline!([data.ks.log_likelihood[end]], color="black", width=2, ls=:dash, label="Z")
 
 p2 = boxplot(ll_tpf', title="Likelihood estimates twisted PF", legend=false, xticks=(1:length(M), string.(M_tpf)), xlabel="Number of particles")
-hline!([data.ks.log_likelihood[end]], color="black", width=2, ls=:dash)
+hline!([data.ks.log_likelihood[end]], color="black", width=2, ls=:dash, label="Z")
 
 plot(p1, p2)
