@@ -20,7 +20,7 @@ M = [10, 50, 100, 500]
 N_mc = 200
 # M_tpf = [10, 50, 100]
 M_tpf = M
-M_max = 100_000
+M_max = 10_000
 
 # Get default parameter values
 θ = LGSSMParameter{nx, nu, ny}()
@@ -53,18 +53,16 @@ rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
 kfX = hcat(data.ks.filter_mean...)'
 kfσ = sqrt.(hcat(diag.(data.ks.filter_Sigma)...))'
 
-
-
-##
+## Plot Kalman filter estimate and true states
 p1 = plot(trueX[:,1], ls=:dot, label="x_1")
-plot!(kfX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
+plot!(kfX[:,1], ribbon=2*kfσ[:,1], label="xhat_1")
 p2 = plot(trueX[:,2], ls=:dot, label="x_2")
-plot!(kfX[:,2], ribbon=2*rtsσ[:,2], label="xhat_2")
+plot!(kfX[:,2], ribbon=2*kfσ[:,2], label="xhat_2")
 p3 = plot(trueX[:,3], ls=:dot, label="x_3")
-plot!(kfX[:,3], ribbon=2*rtsσ[:,3], label="xhat_3")
+plot!(kfX[:,3], ribbon=2*kfσ[:,3], label="xhat_3")
 plot(p1, p2, p3, title="Kalman filter estimates")
 
-##
+## Plot RTS smoother estimate and true states
 p1 = plot(trueX[:,1], ls=:dot, label="x_1")
 plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
 p2 = plot(trueX[:,2], ls=:dot, label="x_2")
@@ -100,9 +98,7 @@ for i in 1:size(tpfσ, 1)
     @views tpfσ[i,:] .= sqrt.(sum(Wnorm[:,i] .* map(x->(x.-tpfX[i,:]).^2, Xtpf[:,i])))
 end
 
-
-
-##
+## Bootstrap PF
 p1 = plot(bpfX[:,1], label="bpf", ribbon=2*bpfσ[:,1], fillalpha=0.5)
 plot!(kfX[:,1], label="kf", ribbon=2*kfσ[:,1], fillalpha=0.5)
 p2 = plot(bpfX[:,2], label="bpf", ribbon=2*bpfσ[:,2], fillalpha=0.5)
@@ -110,7 +106,8 @@ plot!(kfX[:,2], label="kf", ribbon=2*kfσ[:,2], fillalpha=0.5)
 p3 = plot(bpfX[:,3], label="bpf", ribbon=2*bpfσ[:,3], fillalpha=0.5)
 plot!(kfX[:,3], label="kf", ribbon=2*kfσ[:,3], fillalpha=0.5)
 plot(p1, p2, p3)
-##
+
+## Twisted PF
 p4 = plot(tpfX[:,1], label="tpf", ribbon=2*tpfσ[:,1], fillalpha=0.5)
 plot!(rtsX[:,1], label="rts", ribbon=2*rtsσ[:,1], fillalpha=0.5)
 p5 = plot(tpfX[:,2], label="tpf", ribbon=2*tpfσ[:,2], fillalpha=0.5)
@@ -121,12 +118,12 @@ plot(p4, p5, p6)
 
 ##
 
-# Estimate the likelihood 40 times for each number of particles in M  using the particle filter
+# Estimate the likelihood N_mc times for each number of particles in M  using the particle filter
 ll = zeros(length(M), N_mc)
 for i in eachindex(M)
     println(M[i], " particles")
     for j in ProgressBar(1:size(ll,2))
-        ll[i, j] = bpf!(pf_storage, model, data, θ; n_particles = M[i])
+        ll[i, j] = bpf!(bpfs, model, data, θ; n_particles = M[i])
     end
 end
 
@@ -139,7 +136,7 @@ ll_tpf = zeros(length(M_tpf), N_mc)
 for i in eachindex(M_tpf)
     println("Twisted particle filter with ", M_tpf[i], " particles")
     for j in ProgressBar(1:size(ll_tpf, 2))
-        ll_tpf[i, j] = tpf!(pf_storage, model, data, θ; n_particles = M_tpf[i])
+        ll_tpf[i, j] = tpf!(tpfs, model, data, θ; n_particles = M_tpf[i])
     end
 end
 
