@@ -15,7 +15,7 @@ Random.seed!(1);
 nx = 3
 nu = 1
 ny = 1
-T = 8
+T = 50
 M = [10, 50, 100, 500]
 N_mc = 200
 # M_tpf = [10, 50, 100]
@@ -52,8 +52,35 @@ tpfs = ParticleStorage(model, M_max, T)
 # Xref = bpf!(bpfs, model, data, θ;  conditional = true, n_particles = M[1]);
 # println("Done!")
 
+##
 
-ll = bpf!(bpfs, model, data, θ; n_particles = M[1]); # Run bpf first iteration
+x = [[P() for t in 1:T] for n in 1:10_000]
+
+bpf!(bpfs, model, data, θ; n_particles = M[1]); # Run bpf first iteration
+SequentialMonteCarlo.condition_on_particle!(bpfs, 1)
+
+for i in ProgressBar(eachindex(x))
+    bpf!(bpfs, model, data, θ; n_particles=M[1], conditional=:as)
+    for j in eachindex(x[i])
+        SequentialMonteCarlo.copy!(x[i][j], bpfs.X[1,j])
+    end
+end
+##
+trueX = hcat([p.x for p in ptrue]...)'
+rtsX = hcat(data.ks.smooth_mean...)'
+rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
+
+##
+p1 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples")
+plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
+plot!(map(p->p.x[1], x[1]), lw=1, lc=:black, la=0.1, label=false)
+for i in 2:100:length(x)
+    plot!(map(p->p.x[1], x[i]), lw=1, lc=:black, la=0.1,label=false)
+end
+
+plot(p1)
+
+##
 
 X = view(bpfs.X, 1:M[1], :);
 ref = view(bpfs.ref, 1:T);

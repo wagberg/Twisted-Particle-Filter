@@ -30,8 +30,21 @@ struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
         new{P,Float64}(X, Xref, Ψ, W, A, V, wnorm, wancestor, ref, filtered_index)
     end
 end
-
 ParticleStorage(model::SSM, n_particles, t) = ParticleStorage(particletype(model), n_particles, t)
+
+
+# """
+# Pre-allocated storage for conditional particle filter (CPF)
+# """
+# struct CPFstorage{P <: Particle}
+#     X::Vector{Vector{P}}
+#     function CPFstorage(::Type{P}, time_steps::Integer, n_samples::Integer) where P<:Particle
+#         X = [[P() for t in 1:time_steps] for n in 1:n_samples]
+#         new{P}(X)
+#     end
+# end
+# CPFstorage(model::SSM, time_steps, n_samples) = CPFstorage(particletype(model), time_steps, n_samples)
+
 
 function particle_count(storage::ParticleStorage)
     size(storage.X, 1)
@@ -76,12 +89,34 @@ function compute_ancestor_weights(Xi::AVec{<:Particle}, Xref::Particle, W::AVec{
 end
 
 """
+Compute ancestor weights 
+"""
+function ancestor_weights!(wnorm, pcurr, pprev, model, t, data, θ)
+    for i in eachindex(pprev)
+        wnorm[i] = log(wnorm[i]) + log_transition_density(pcurr, pprev[i], model, t, data, θ)
+    end
+    logΣexp = logsumexp(wnorm)
+    wnorm .= exp.(wnorm .- logΣexp)
+    nothing
+end
+
+
+"""
 Bootstrap particle filter.
 Uses transition distribution as proposal.
 Never evaluates transition density. Only requires observation density.
+
+Arguments:
+* `storage`: Preallocated storage for particle filter
+* `resampling`: Type of resampling
+* `contitional`: Run conditional particle filter. One of `:no`, `:yes`, `:as`, where :as uses ancestor sampling
+* `n_particles`: Number of particles
 """
 function bpf!(storage::ParticleStorage, model::SSM, data, θ;
-        resampling::Resampling=MultinomialResampling(), conditional::Bool=false, ancestorsampling::Bool=false, n_particles::Int=particle_count(storage) )
+        resampling::Resampling=MultinomialResampling(),
+        conditional::Symbol=:no,
+        ancestorsampling::Bool=false,
+        n_particles::Int=particle_count(storage) )
     
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
@@ -95,7 +130,7 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
 
     ll = 0
 
-    start = conditional ? 2 : 1
+    start = conditional == :no ? 1 : 2
     for j in start:n_particles
         @inbounds simulate_initial!(X[j,1], model, data, θ)
     end
@@ -106,17 +141,20 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
 
     @views logΣexp = logsumexp(W[:, 1])
     ll += logΣexp - log(n_particles)
-    # W[:, 1] .= exp.(W[:, 1] .- logΣexp)
     wnorm .= exp.(W[:, 1] .- logΣexp)
 
     for t in 2:T
         a = view(A, :, t - 1)
         # resample!(a, W[:, t - 1], resampling, conditional)
-        resample!(a, wnorm, resampling, conditional)
-        if ancestorsampling #&& conditional
-            wancestor = compute_ancestor_weights(X[:,t-1], X[1,t], wnorm, wancestor, model, t, data, θ)  # (xⁱₜ₋₁,xₜʳ,wⁱₜ₋₁,...) Returns normalized w
-            a[1] = sample_one_index(wancestor)
+        resample!(a, wnorm, resampling, !(conditional == :no))
+        if conditional == :as
+            ancestor_weights!(wnorm, X[1, t], X[:, t-1], model, t-1, data, θ)
+            a[1] = sample_one_index(wnorm)
         end
+        # if ancestorsampling #&& conditional
+        #     wancestor = compute_ancestor_weights(X[:,t-1], X[1,t], wnorm, wancestor, model, t, data, θ)  # (xⁱₜ₋₁,xₜʳ,wⁱₜ₋₁,...) Returns normalized w
+        #     a[1] = sample_one_index(wancestor)
+        # end
         
         for j in start:n_particles
             simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
@@ -127,19 +165,23 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
         end
         @views logΣexp = logsumexp(W[:, t])
         ll += logΣexp - log(n_particles)
-        # W[:, t] .= exp.(W[:, t] .- logΣexp)
         @views wnorm .= exp.(W[:, t] .- logΣexp)
     end
-    
-    if conditional
-        println("Reference trajectory before generating new is ")
-        println(X[1,:])
-        println("state trajectory matrix is ")
-        println(X)
-        finalInd = sample_one_index(wnorm); # Previously W[:, T]
-        Xref = generate_trajectory(A, X, ref, finalInd);  # Add Xref here if want to store Xref separately between runs
-        return Xref;
+
+    if !(conditional == :no)
+        idx = sample_one_index(wnorm)
+        condition_on_particle!(storage, idx)
     end
+    
+    # if conditional
+    #     println("Reference trajectory before generating new is ")
+    #     println(X[1,:])
+    #     println("state trajectory matrix is ")
+    #     println(X)
+    #     finalInd = sample_one_index(wnorm); # Previously W[:, T]
+    #     Xref = generate_trajectory(A, X, ref, finalInd);  # Add Xref here if want to store Xref separately between runs
+    #     return Xref;
+    # end
     
     ll;
 end
