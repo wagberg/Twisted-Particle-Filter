@@ -12,6 +12,7 @@ struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
     A::Matrix{Int}
     V::Vector{T}
     wnorm::Vector{T}
+    wancestor::Vector{T}
     ref::Vector{Int}  # Vector of indices for the reference trajectory, 
     filtered_index::Base.RefValue{Int}
 
@@ -22,10 +23,11 @@ struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
         Ψ = zeros(Float64, n_particles, t)
         V = zeros(Float64, n_particles)
         wnorm = zeros(Float64, n_particles)
+        wancestor = zeros(Float64, n_particles) # Ancestor weight
         A = zeros(typeof(n_particles), n_particles, t)
         ref = zeros(typeof(n_particles), t)
         filtered_index = Ref(0)
-        new{P,Float64}(X, Xref, Ψ, W, A, V, wnorm, ref, filtered_index)
+        new{P,Float64}(X, Xref, Ψ, W, A, V, wnorm, wancestor, ref, filtered_index)
     end
 end
 
@@ -35,7 +37,8 @@ function particle_count(storage::ParticleStorage)
     size(storage.X, 1)
 end
 
-function sample_ref_ancestor_final(w::AVec{Float64}, rng::AbstractRNG = Random.GLOBAL_RNG)
+function sample_one_index(w::AVec{Float64}, rng::AbstractRNG = Random.GLOBAL_RNG)
+    # TODO: Add check that w is normalized 
     u = rand(rng)
     csum = zero(Float64)
     N = length(w)
@@ -50,7 +53,7 @@ end
 
 function generate_trajectory(A::AMat{Int}, X::AMat{<:Particle}, ref::AVec{Int}, finalInd::Integer) # Add Xref::AVec{<:Particle}, as argumet if want to store Xref separately
     # Change X[1,t] to Xref[t] if want to store reference separately
-    
+    println(typeof(X))
     T = size(X, 2)
     
     ref[T] = finalInd  # Save sampled trajectory on last place in ref
@@ -59,7 +62,17 @@ function generate_trajectory(A::AMat{Int}, X::AMat{<:Particle}, ref::AVec{Int}, 
         ref[t] = A[ref[t+1],t]
         X[1,t] = X[ref[t],t]
     end
-    X[1,:]
+    #X[1,:]
+end
+
+function compute_ancestor_weights(Xi::AVec{<:Particle}, Xref::Particle, W::AVec{Float64}, wancestor::AVec{Float64}, model::SSM, t::Integer, data, θ) # (anc, xⁱₜ₋₁, xₜʳ,wⁱₜ₋₁ )
+    n_particles = length(W)
+    for i in 1:n_particles
+        wancestor[i] = log(W[i]) + log_transition_density(Xref, Xi[i], model, t, data, θ)  # For SSM, no twisting
+    end
+    logΣexp = logsumexp(wancestor)
+    wancestor .= exp.(wancestor .- logΣexp)
+    #return wancestor
 end
 
 """
@@ -68,7 +81,7 @@ Uses transition distribution as proposal.
 Never evaluates transition density. Only requires observation density.
 """
 function bpf!(storage::ParticleStorage, model::SSM, data, θ;
-        resampling::Resampling=MultinomialResampling(), conditional::Bool=false, n_particles::Int=particle_count(storage) )
+        resampling::Resampling=MultinomialResampling(), conditional::Bool=false, ancestorsampling::Bool=false, n_particles::Int=particle_count(storage) )
     
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
@@ -76,6 +89,7 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
     W = view(storage.W, 1:n_particles, :);
     A = view(storage.A, 1:n_particles, :);
     wnorm = view(storage.wnorm, 1:n_particles);
+    wancestor = view(storage.wancestor, 1:n_particles);
     ref = view(storage.ref, 1:T)
     # Xref = view(storage.Xref,1:T)
 
@@ -99,6 +113,10 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
         a = view(A, :, t - 1)
         # resample!(a, W[:, t - 1], resampling, conditional)
         resample!(a, wnorm, resampling, conditional)
+        if ancestorsampling #&& conditional
+            wancestor = compute_ancestor_weights(X[:,t-1], X[1,t], wnorm, wancestor, model, t, data, θ)  # (xⁱₜ₋₁,xₜʳ,wⁱₜ₋₁,...) Returns normalized w
+            a[1] = sample_one_index(wancestor)
+        end
         
         for j in start:n_particles
             simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
@@ -112,9 +130,13 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
         # W[:, t] .= exp.(W[:, t] .- logΣexp)
         @views wnorm .= exp.(W[:, t] .- logΣexp)
     end
-
+    
     if conditional
-        finalInd = sample_ref_ancestor_final(W[:, T]);
+        println("Reference trajectory before generating new is ")
+        println(X[1,:])
+        println("state trajectory matrix is ")
+        println(X)
+        finalInd = sample_one_index(wnorm); # Previously W[:, T]
         Xref = generate_trajectory(A, X, ref, finalInd);  # Add Xref here if want to store Xref separately between runs
         return Xref;
     end
