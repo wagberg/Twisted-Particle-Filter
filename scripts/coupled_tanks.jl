@@ -15,7 +15,7 @@ includet(projectdir("src/models/coupled_tanks.jl"))
 ##
 M = [10, 50, 100, 500, 1_000] # Number of particles
 M = [10, 100, 1_000] # Number of particles
-M_max = 10_000
+M_max = 1_000
 N_mc = 100 # Number of Monte Carlo runs fo estimating likelihood
 
 θ = TankParameter()
@@ -37,8 +37,8 @@ data = (;
 ekf!(data.ks, model, data, θ)
 smooth!(data.ks, model, data, θ)
 
-@time bpf!(ps, model, data, θ, n_particles = 10_000)
-@time tpf!(ps, model, data, θ, n_particles = 1_000)
+@time bpf!(ps, model, data, θ)
+@time tpf!(ps, model, data, θ)
 ##
 
 ll = zeros(N_mc, 2*length(M))
@@ -70,11 +70,6 @@ p = Gadfly.plot(
     Gadfly.Theme(boxplot_spacing=0.2*Gadfly.cx),
     Gadfly.Guide.colorkey(title="Method")#, pos=[0.0*Gadfly.w,-0.3*Gadfly.h])
     )
-
-##
-p_traj = Gadfly.plot(
-
-)
 
 ##
 p |> PDF(projectdir("plots", "likelihood_estimated.pdf"))
