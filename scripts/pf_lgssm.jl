@@ -110,6 +110,29 @@ end
 
 plot(p2)
 
+finalInd = SequentialMonteCarlo.sample_one_index(wnorm); 
+Xref = SequentialMonteCarlo.generate_trajectory(A,X, ref, finalInd);  
+println("-------------------")
+println()
+println("After generating and storing a reference at index i=1")
+print("ref is ")
+println(ref)
+println("Reference state trajectory is ")
+println(X[1,:])
+println("State trajectory matrix is ")
+println(X)
+
+println("-------------------")
+println()
+println("Running CPF")
+Xref = bpf!(bpfs, model, data, θ; conditional =:yes, n_particles = M[1]);
+println("-------------------")
+println()
+println(" Done with CPF, new reference generated and stored")
+println("Reference trajectory is ")
+println(X[1,:])
+print("ref is ")
+println(ref)
 
 ##
 
