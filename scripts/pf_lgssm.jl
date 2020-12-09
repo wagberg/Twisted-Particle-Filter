@@ -73,7 +73,7 @@ rtsX = hcat(data.ks.smooth_mean...)'
 rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
 
 ##
-p1 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples")
+p1 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples, bpf")
 plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
 plot!(map(p->p.x[1], x[1]), lw=1, lc=:black, la=0.1, label=false)
 for i in 2:100:length(x)
@@ -81,6 +81,11 @@ for i in 2:100:length(x)
 end
 
 plot(p1)
+#savefig(p1,"cbpf.png")
+
+
+
+x = [[P() for t in 1:T] for n in 1:10_000]
 
 println()
 println("Running tpf")
@@ -101,7 +106,7 @@ rtsX = hcat(data.ks.smooth_mean...)'
 rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
 
 ##
-p2 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples")
+p2 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples, tpf")
 plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
 plot!(map(p->p.x[1], x_tpf[1]), lw=1, lc=:black, la=0.1, label=false)
 for i in 2:100:length(x)
@@ -109,30 +114,34 @@ for i in 2:100:length(x)
 end
 
 plot(p2)
+#savefig(p2,"ctpf.png")
 
-finalInd = SequentialMonteCarlo.sample_one_index(wnorm); 
-Xref = SequentialMonteCarlo.generate_trajectory(A,X, ref, finalInd);  
-println("-------------------")
-println()
-println("After generating and storing a reference at index i=1")
-print("ref is ")
-println(ref)
-println("Reference state trajectory is ")
-println(X[1,:])
-println("State trajectory matrix is ")
-println(X)
 
-println("-------------------")
-println()
-println("Running CPF")
-Xref = bpf!(bpfs, model, data, θ; conditional =:yes, n_particles = M[1]);
-println("-------------------")
-println()
-println(" Done with CPF, new reference generated and stored")
-println("Reference trajectory is ")
-println(X[1,:])
-print("ref is ")
-println(ref)
+
+
+# finalInd = SequentialMonteCarlo.sample_one_index(wnorm); 
+# Xref = SequentialMonteCarlo.generate_trajectory(A,X, ref, finalInd);  
+# println("-------------------")
+# println()
+# println("After generating and storing a reference at index i=1")
+# print("ref is ")
+# println(ref)
+# println("Reference state trajectory is ")
+# println(X[1,:])
+# println("State trajectory matrix is ")
+# println(X)
+
+# println("-------------------")
+# println()
+# println("Running CPF")
+# Xref = bpf!(bpfs, model, data, θ; conditional =:yes, n_particles = M[1]);
+# println("-------------------")
+# println()
+# println(" Done with CPF, new reference generated and stored")
+# println("Reference trajectory is ")
+# println(X[1,:])
+# print("ref is ")
+# println(ref)
 
 ##
 

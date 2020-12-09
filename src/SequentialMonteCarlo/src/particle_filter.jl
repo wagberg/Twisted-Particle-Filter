@@ -103,11 +103,23 @@ function compute_ancestor_weights(Xi::AVec{<:Particle}, Xref::Particle, W::AVec{
 end
 
 """
-Compute ancestor weights 
+Compute ancestor weights bpf
 """
 function ancestor_weights!(wnorm, pcurr, pprev, model, t, data, θ)
     for i in eachindex(pprev)
-        wnorm[i] = log(wnorm[i]) + log_transition_density(pcurr, pprev[i], model, t, data, θ)
+        wnorm[i] = log(wnorm[i]) + log_transition_density(pcurr, pprev[i], model, t, data, θ) 
+    end
+    logΣexp = logsumexp(wnorm)
+    wnorm .= exp.(wnorm .- logΣexp)
+    nothing
+end
+
+"""
+Compute ancestor weights tpf
+"""
+function ancestor_weights!(wnorm, pcurr, pprev, model, t, data, θ, Ψ::AVec{Float64})
+    for i in eachindex(pprev)
+        wnorm[i] = log(wnorm[i]) + log_transition_density(pcurr, pprev[i], model, t, data, θ) - Ψ[i]
     end
     logΣexp = logsumexp(wnorm)
     wnorm .= exp.(wnorm .- logΣexp)
@@ -262,7 +274,12 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
     for t in 2:T
         a = view(A, :, t - 1)
         resample!(a, wnorm, resampling, !(conditional == :no))
-        
+        if conditional == :as
+            ψ = view(Ψ, :, t - 1)
+            ancestor_weights!(wnorm, X[1, t], X[:, t-1], model, t-1, data, θ, ψ)
+            a[1] = sample_one_index(wnorm)
+        end
+
         for j in start:n_particles
             # @inbounds simulate_transition!(X[j, t], X[a[j], t - 1], model, t - 1, data, θ)
             @inbounds simulate_proposal!(X[j, t], X[a[j], t-1], model, t, data, θ)
