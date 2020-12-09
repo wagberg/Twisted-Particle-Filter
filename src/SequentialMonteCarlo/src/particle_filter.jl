@@ -222,7 +222,10 @@ end
 log_proposal_density(p::FloatParticle, model, data, θ) = log_proposal_density(p, p, model, 1, data, θ)
 
 function tpf!(storage::ParticleStorage, model::SSM, data, θ;
-    resampling::Resampling=MultinomialResampling(), conditional::Bool=false, n_particles::Int=particle_count(storage) )
+    resampling::Resampling=MultinomialResampling(), 
+    conditional::Symbol=:no,      
+    # contitional::Bool=false
+    n_particles::Int=particle_count(storage) )
 
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
@@ -234,8 +237,10 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
 
     ll = 0
 
+    start = conditional == :no ? 1 : 2 # Skip reference (index 1) if conditional
+
     # Simulate initial state
-    for j in 1:n_particles
+    for j in start:n_particles
         # @inbounds simulate_initial!(X[j,1], model, data, θ)
         @inbounds simulate_proposal!(X[j, 1], model, data, θ)
     end
@@ -256,9 +261,9 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
 
     for t in 2:T
         a = view(A, :, t - 1)
-        resample!(a, wnorm, resampling)
+        resample!(a, wnorm, resampling, !(conditional == :no))
         
-        for j in 1:n_particles
+        for j in start:n_particles
             # @inbounds simulate_transition!(X[j, t], X[a[j], t - 1], model, t - 1, data, θ)
             @inbounds simulate_proposal!(X[j, t], X[a[j], t-1], model, t, data, θ)
         end
@@ -276,6 +281,12 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
         ll += logΣexp - log(n_particles)
         @views wnorm .= exp.(W[:, t] .- logΣexp)
     end
+
+    if !(conditional == :no)
+        idx = sample_one_index(wnorm)
+        condition_on_particle!(storage, idx)
+    end
+
     ll;
 end
 
