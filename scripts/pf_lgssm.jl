@@ -106,7 +106,7 @@ println(X)
 println("-------------------")
 println()
 println("Running CPF")
-Xref = bpf!(bpfs, model, data, θ; conditional = true, n_particles = M[1]);
+Xref = bpf!(bpfs, model, data, θ; conditional =:yes, n_particles = M[1]);
 println("-------------------")
 println()
 println(" Done with CPF, new reference generated and stored")
