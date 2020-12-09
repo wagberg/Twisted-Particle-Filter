@@ -32,7 +32,7 @@ data = (u = [randn(nu) for i in 1:T], y = [zeros(ny) for i in 1:T], ks=KalmanSto
 P = SequentialMonteCarlo.particletype(model)
 ptrue = [P() for t in 1:T]
 # Simulate the model storing the output in data
-simulate!(data.y, ptrue, model, data, θ)
+simulate!(data.y, ptrue, model, data, θ) # ptrue is a 1D aprticle, but just used to store the true x-trajectory 
 
 # Preallocate storage for the Kalman filter
 ekf!(data.ks, model, data, θ)
@@ -56,11 +56,13 @@ tpfs = ParticleStorage(model, M_max, T)
 
 x = [[P() for t in 1:T] for n in 1:10_000]
 
+println()
+println("Running bpf")
 bpf!(bpfs, model, data, θ; n_particles = M[1]); # Run bpf first iteration
-SequentialMonteCarlo.condition_on_particle!(bpfs, 1)
+SequentialMonteCarlo.condition_on_particle!(bpfs, 1)  # WHY 1 as input here?
 
 for i in ProgressBar(eachindex(x))
-    bpf!(bpfs, model, data, θ; n_particles=M[1], conditional=:as)
+    bpf!(bpfs, model, data, θ; n_particles=M[1], conditional=:yes)
     for j in eachindex(x[i])
         SequentialMonteCarlo.copy!(x[i][j], bpfs.X[1,j])
     end
@@ -80,42 +82,72 @@ end
 
 plot(p1)
 
+println()
+println("Running tpf")
+x_tpf = [[P() for t in 1:T] for n in 1:10_000]
+
+tpf!(tpfs, model, data, θ; n_particles = M[1]); # Run bpf first iteration
+SequentialMonteCarlo.condition_on_particle!(tpfs, 1)  # WHY 1 as input here?
+
+for i in ProgressBar(eachindex(x_tpf))
+    tpf!(tpfs, model, data, θ; n_particles=M[1], conditional=:yes)
+    for j in eachindex(x_tpf[i])
+        SequentialMonteCarlo.copy!(x_tpf[i][j], tpfs.X[1,j])
+    end
+end
+##
+trueX = hcat([p.x for p in ptrue]...)'
+rtsX = hcat(data.ks.smooth_mean...)'
+rtsσ = sqrt.(hcat(diag.(data.ks.smooth_Sigma)...))'
+
+##
+p2 = plot(trueX[:,1], ls=:dot, label="x_1", title="Posterior samples")
+plot!(rtsX[:,1], ribbon=2*rtsσ[:,1], label="xhat_1")
+plot!(map(p->p.x[1], x_tpf[1]), lw=1, lc=:black, la=0.1, label=false)
+for i in 2:100:length(x)
+    plot!(map(p->p.x[1], x_tpf[i]), lw=1, lc=:black, la=0.1,label=false)
+end
+
+plot(p2)
+
+
 ##
 
-X = view(bpfs.X, 1:M[1], :);
-ref = view(bpfs.ref, 1:T);
-A = view(bpfs.A, 1:M[1], :);
-wnorm = view(bpfs.wnorm, 1:M[1])
+# X = view(bpfs.X, 1:M[1], :);
+# ref = view(bpfs.ref, 1:T);
+# A = view(bpfs.A, 1:M[1], :);
+# wnorm = view(bpfs.wnorm, 1:M[1])
 
-println("After running bpf, before generating a reference trajectory")
-println("State trajectory matrix is ")
-println(X)
+# println("After running bpf, before generating a reference trajectory")
+# println("State trajectory matrix is ")
+# println(X)
 
-finalInd = SequentialMonteCarlo.sample_one_index(wnorm); 
-Xref = SequentialMonteCarlo.generate_trajectory(A,X, ref, finalInd);  
-println("-------------------")
-println()
-println("After generating and storing a reference at index i=1")
-print("ref is ")
-println(ref)
-println("Reference state trajectory is ")
-println(X[1,:])
-println("State trajectory matrix is ")
-println(X)
+# finalInd = SequentialMonteCarlo.sample_one_index(wnorm); 
+# Xref = SequentialMonteCarlo.generate_trajectory(A,X, ref, finalInd);  
+# println("-------------------")
+# println()
+# println("After generating and storing a reference at index i=1")
+# print("ref is ")
+# println(ref)
+# println("Reference state trajectory is ")
+# println(X[1,:])
+# println("State trajectory matrix is ")
+# println(X)
 
-println("-------------------")
-println()
-println("Running CPF")
-Xref = bpf!(bpfs, model, data, θ; conditional = true, n_particles = M[1]);
-println("-------------------")
-println()
-println(" Done with CPF, new reference generated and stored")
-println("Reference trajectory is ")
-println(X[1,:])
-print("ref is ")
-println(ref)
+# println("-------------------")
+# println()
+# println("Running CPF")
+# Xref = bpf!(bpfs, model, data, θ; conditional =:yes, n_particles = M[1]);
+# println("-------------------")
+# println()
+# println(" Done with CPF, new reference generated and stored")
+# println("Reference trajectory is ")
+# println(X[1,:])
+# print("ref is ")
+# println(ref)
 
-println("Done!")
+# println("Done!")
+
 #############################################################
 
 # ##
