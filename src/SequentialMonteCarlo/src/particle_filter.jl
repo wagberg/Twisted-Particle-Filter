@@ -6,44 +6,46 @@ Preallocate storage for particle filter.
 """
 struct ParticleStorage{P <: Particle,T <: AFloat} <: SSMStorage
     X::Matrix{P}
-    Xref::Vector{P}
+    # Xref::Vector{P}
     Ψ::Matrix{T}
     W::Matrix{T}
     A::Matrix{Int}
-    V::Vector{T}
+    # V::Vector{T}
     wnorm::Vector{T}
-    wancestor::Vector{T}
-    ref::Vector{Int}  # Vector of indices for the reference trajectory, 
-    filtered_index::Base.RefValue{Int}
+    # wancestor::Vector{T}
+    # ref::Vector{Int}  # Vector of indices for the reference trajectory, 
+    # filtered_index::Base.RefValue{Int}
+    ess::Vector{T}
 
     function ParticleStorage(::Type{P}, n_particles::Integer, t::Integer) where {P <: Particle}
         X = [P() for n in 1:n_particles, j in 1:t]
-        Xref = [P() for j in 1:t]
+        # Xref = [P() for j in 1:t]
         W = zeros(Float64, n_particles, t)
         Ψ = zeros(Float64, n_particles, t)
-        V = zeros(Float64, n_particles)
+        # V = zeros(Float64, n_particles)
         wnorm = zeros(Float64, n_particles)
-        wancestor = zeros(Float64, n_particles) # Ancestor weight
+        # wancestor = zeros(Float64, n_particles) # Ancestor weight
         A = zeros(typeof(n_particles), n_particles, t)
-        ref = zeros(typeof(n_particles), t)
-        filtered_index = Ref(0)
-        new{P,Float64}(X, Xref, Ψ, W, A, V, wnorm, wancestor, ref, filtered_index)
+        ess = zeros(Float64, t)
+        # ref = zeros(typeof(n_particles), t)
+        # filtered_index = Ref(0)
+        new{P,Float64}(
+            X,
+            # Xref,
+            Ψ,
+            W,
+            A,
+            # V,
+            wnorm,
+            # wancestor,
+            # ref,
+            # filtered_index,
+            ess
+        )
     end
 end
 ParticleStorage(model::SSM, n_particles, t) = ParticleStorage(particletype(model), n_particles, t)
 
-
-# """
-# Pre-allocated storage for conditional particle filter (CPF)
-# """
-# struct CPFstorage{P <: Particle}
-#     X::Vector{Vector{P}}
-#     function CPFstorage(::Type{P}, time_steps::Integer, n_samples::Integer) where P<:Particle
-#         X = [[P() for t in 1:time_steps] for n in 1:n_samples]
-#         new{P}(X)
-#     end
-# end
-# CPFstorage(model::SSM, time_steps, n_samples) = CPFstorage(particletype(model), time_steps, n_samples)
 
 
 function particle_count(storage::ParticleStorage)
@@ -126,6 +128,13 @@ function ancestor_weights!(wnorm, pcurr, pprev, model, t, data, θ, Ψ::AVec{Flo
     nothing
 end
 
+"""
+Compute the effective sample size.
+The weghts `w` are assumed normalized.
+"""
+function ess(w::AVec{Float64})
+    1/mapreduce(x->x^2, +, w)
+end
 
 """
 Bootstrap particle filter.
@@ -142,19 +151,22 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
         resampling::Resampling=MultinomialResampling(),
         conditional::Symbol=:no,
         ancestorsampling::Bool=false,
-        n_particles::Int=particle_count(storage) )
+        n_particles::Int=particle_count(storage),
+        ess_threshold::AFloat=0.5)
     
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
     X = view(storage.X, 1:n_particles, :);
     W = view(storage.W, 1:n_particles, :);
     A = view(storage.A, 1:n_particles, :);
+    esses = storage.ess
     wnorm = view(storage.wnorm, 1:n_particles);
-    wancestor = view(storage.wancestor, 1:n_particles);
-    ref = view(storage.ref, 1:T)
+    # wancestor = view(storage.wancestor, 1:n_particles);
+    # ref = view(storage.ref, 1:T)
     # Xref = view(storage.Xref,1:T)
+    @views W[:,1] .= -log(n_particles)
 
-    ll = 0
+    ll = 0.0
 
     start = conditional == :no ? 1 : 2
     for j in start:n_particles
@@ -162,52 +174,46 @@ function bpf!(storage::ParticleStorage, model::SSM, data, θ;
     end
 
     for j in 1:n_particles
-        @inbounds W[j,1] = log_observation_density(X[j,1], model, 1, data, θ)
+        @inbounds W[j,1] += log_observation_density(X[j,1], model, 1, data, θ)
     end
 
     @views logΣexp = logsumexp(W[:, 1])
-    ll += logΣexp - log(n_particles)
-    wnorm .= exp.(W[:, 1] .- logΣexp)
+    ll += logΣexp
+    @views wnorm .= exp.(W[:, 1] .- logΣexp)
+    esses[1] = ess(wnorm) / n_particles
 
     for t in 2:T
         a = view(A, :, t - 1)
-        # resample!(a, W[:, t - 1], resampling, conditional)
-        resample!(a, wnorm, resampling, !(conditional == :no))
-        if conditional == :as
-            ancestor_weights!(wnorm, X[1, t], X[:, t-1], model, t-1, data, θ)
-            a[1] = sample_one_index(wnorm)
+        
+        if esses[t-1] < ess_threshold
+            resample!(a, wnorm, resampling, !(conditional == :no))
+            if conditional == :as
+                ancestor_weights!(wnorm, X[1, t], X[:, t-1], model, t-1, data, θ)
+                a[1] = sample_one_index(wnorm)
+            end
+            @views W[:,t] .= -log(n_particles)
+        else
+            a .= 1:n_particles
+            @views W[:,t] .= log.(wnorm)
         end
-        # if ancestorsampling #&& conditional
-        #     wancestor = compute_ancestor_weights(X[:,t-1], X[1,t], wnorm, wancestor, model, t, data, θ)  # (xⁱₜ₋₁,xₜʳ,wⁱₜ₋₁,...) Returns normalized w
-        #     a[1] = sample_one_index(wancestor)
-        # end
         
         for j in start:n_particles
             simulate_transition!(X[j,t], X[a[j],t - 1], model, t - 1, data, θ)
         end
 
         for j in 1:n_particles
-            @inbounds W[j,t] = log_observation_density(X[j,t], model, t, data, θ)
+            @inbounds W[j,t] += log_observation_density(X[j,t], model, t, data, θ)
         end
         @views logΣexp = logsumexp(W[:, t])
-        ll += logΣexp - log(n_particles)
+        ll += logΣexp# - log(n_particles)
         @views wnorm .= exp.(W[:, t] .- logΣexp)
+        esses[t] = ess(wnorm) / n_particles
     end
 
     if !(conditional == :no)
         idx = sample_one_index(wnorm)
         condition_on_particle!(storage, idx)
     end
-    
-    # if conditional
-    #     println("Reference trajectory before generating new is ")
-    #     println(X[1,:])
-    #     println("state trajectory matrix is ")
-    #     println(X)
-    #     finalInd = sample_one_index(wnorm); # Previously W[:, T]
-    #     Xref = generate_trajectory(A, X, ref, finalInd);  # Add Xref here if want to store Xref separately between runs
-    #     return Xref;
-    # end
     
     ll;
 end
@@ -235,17 +241,18 @@ log_proposal_density(p::FloatParticle, model, data, θ) = log_proposal_density(p
 
 function tpf!(storage::ParticleStorage, model::SSM, data, θ;
     resampling::Resampling=MultinomialResampling(), 
-    conditional::Symbol=:no,      
-    # contitional::Bool=false
-    n_particles::Int=particle_count(storage) )
+    conditional::Symbol=:no,
+    n_particles::Int=particle_count(storage),
+    ess_threshold::AFloat=0.5)
 
     @assert n_particles <= particle_count(storage)
     T = length(data.y)
-    X = view(storage.X, 1:n_particles, :);
-    W = view(storage.W, 1:n_particles, :);
-    A = view(storage.A, 1:n_particles, :);
-    Ψ = view(storage.Ψ, 1:n_particles, :);
-    wnorm = view(storage.wnorm, 1:n_particles);
+    X = view(storage.X, 1:n_particles, :)
+    W = view(storage.W, 1:n_particles, :)
+    A = view(storage.A, 1:n_particles, :)
+    Ψ = view(storage.Ψ, 1:n_particles, :)
+    wnorm = view(storage.wnorm, 1:n_particles)
+    esses = storage.ess
 
     ll = 0
 
@@ -270,6 +277,7 @@ function tpf!(storage::ParticleStorage, model::SSM, data, θ;
     logΣexp = logsumexp(W[:, 1])
     ll += logΣexp - log(n_particles)
     @views wnorm .= exp.(W[:, 1] .- logΣexp)
+    esses[1] = ess(wnorm)
 
     for t in 2:T
         a = view(A, :, t - 1)

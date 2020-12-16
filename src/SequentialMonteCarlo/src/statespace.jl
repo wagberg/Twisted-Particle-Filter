@@ -33,6 +33,16 @@ function particletype(::SSM{P}) where P <: Particle
 end
 
 """
+Returns the names of the states
+"""
+function statenames(::Type{P}) where P <: Particle
+    fieldnames(P);
+end
+
+function statenames(::SSM{P}) where P <: Particle
+    statenames(P)
+end
+"""
 Simulate `length(y)` amount of observations from a generic state space model
 (SSM).
 Arguments:
@@ -79,6 +89,22 @@ function simulate!(y::AVec{<:AVec{<:AFloat}},
     nothing;
 end
 
+"""
+Deep copy of particles from src to dest.
+"""
+function copy_trajectory!(dest::AbstractArray{P}, src::AbstractArray{P}) where P <: Particle
+    @assert length(dest) == length(src)
+    for i in eachindex(dest)
+        copy!(dest[i], src[i])
+    end
+end
+
+"""
+
+"""
+function ==(p1::P, p2::P) where P <: Particle
+    toSVector(p1) == toSVector(p2)
+end
 function transition_state_jacobian(x, model::SSM, t, data, θ)
     ForwardDiff.jacobian(μ->transition_function(μ, model, t, data, θ), x)
 end

@@ -8,6 +8,7 @@ using StaticArrays
 using Parameters
 using ForwardDiff
 using StatsFuns
+import Base: copy!, (==)
 
 const AVec = AbstractVector
 const AMat = AbstractMatrix
@@ -36,6 +37,9 @@ export
     ekf!,
     smooth!,
     bpf!,
-    tpf!
+    tpf!,
+    toSVector,
+    SystematicResampling,
+    MultinomialResampling
 
 end # module
