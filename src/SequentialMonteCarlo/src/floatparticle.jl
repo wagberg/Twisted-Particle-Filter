@@ -34,7 +34,7 @@ function toSVector(p::FloatParticle{N}) where N
 end
 
 function statenames(::Type{FloatParticle{N}}) where N
-    Symbol.("x" .* string(collect(1:N)))
+    Symbol.("x" .* string.(collect(1:N)))
 end
 
 function simulate_observation!(y::AVec{<:AFloat}, p::FloatParticle{N}, model::SSM, t::Integer, data, θ) where N
