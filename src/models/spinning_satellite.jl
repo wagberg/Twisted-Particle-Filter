@@ -1,5 +1,7 @@
 """
 A non-linear state-space model with additive Gaussian noise.
+
+xₜ₊₁ = f(xₜ, uₜ, vₜ) = xₜ + δt
 """
 struct SpinningSatellite <: SSM{FloatParticle{3}}
 end
