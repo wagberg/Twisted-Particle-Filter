@@ -14,6 +14,7 @@ using StatsFuns
 using DiffResults
 using PDMats
 using LoopVectorization
+using ProgressMeter
 import Base: copy!, (==)
 
 export Particle
@@ -21,11 +22,11 @@ export FloatParticle
 export toSVector
 export AbstractSSM
 # export KalmanStorage
-export KalmanFilter, RtsSmoother
+export KalmanFilter, RtsSmoother, RobustKalmanFilter
 export filter_density, predictive_density, smoothing_density ,log_likelihood
 export ParticleFilter, BootstrapParticleFilter, ConditionalParticleFilter, ConditionalParticleFilterWithAncestorSampling
 export AbstractProposal, BootstrapProposal, RTSProposal, LocallyOptimalProposal
-export AbstractPotetial, IdentityPotential, RTSPotential
+export AbstractPotetial, IdentityPotential, RTSPotential, LookAhead
 export SystematicResampler, MultinomialResampler, ResampleWithESSThreshold
 export ConditionalMultinomialResampler, ConditionalSystematicResampler
 export FullParticleStorage, SlimParticleStorage

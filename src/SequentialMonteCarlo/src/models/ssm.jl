@@ -97,8 +97,8 @@ end
 ########
 
 @inline function simulate_initial!(p, model::AbstractSSM, data, θ)
-    @timeit_debug "initial_density" d = initial_density(model, data, θ)
-    @timeit_debug "rand!" return rand!(d, p.x)
+    d = initial_density(model, data, θ)
+    return rand!(d, p.x)
 end
 
 function simulate_transition!(xₜ₊₁, xₜ, model::AbstractSSM, t, data, θ)

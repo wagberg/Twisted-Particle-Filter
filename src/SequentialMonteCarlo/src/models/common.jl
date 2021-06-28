@@ -60,14 +60,13 @@ function simulate_transition!(xₜ₊₁, xₜ, model::AbstractModel, t, data, �
 """
 Logarithm of the observation probability density function
 Arguments:
-* `yₜ`: observation
 * `pₜ`: particle
 * `model`: state space model
 * `t`: time step
 * `data`: data
 * `θ`: parameter
 """
-function log_observation_density(yₜ, xₜ, model::AbstractModel, t, data, θ) end
+function log_observation_density(xₜ, model::AbstractModel, t, data, θ) end
 
 
 """
@@ -80,6 +79,16 @@ Arguments:
 * `θ`: parameter
 """
 function simulate_observation(pₜ, model::AbstractModel, t, data, θ) end
+
+"""
+Convert a model parameter to a vector
+"""
+function par_to_vec(θ) end
+
+"""
+Convert a vector to a model parameter
+"""
+function vec_to_par(model::AbstractModel, v) end
 
 """
 Simulate observations from a state space model (SSM).
